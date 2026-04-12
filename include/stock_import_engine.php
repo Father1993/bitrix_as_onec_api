@@ -42,6 +42,8 @@ use Bitrix\Main\Loader;
 use As\OnecApi\StockImportOptions;
 
 /**
+ * Точка входа для старого кода и агентов: делегирует в {@see \As\OnecApi\Stock\ImportService::run()}.
+ *
  * @param array{payload?:array, trust_bitrix_auth?:bool} $options
  * @return array{http_code:int, data:array}
  */

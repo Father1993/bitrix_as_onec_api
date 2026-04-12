@@ -2,13 +2,14 @@
 
 namespace As\OnecApi\Price;
 
+use As\OnecApi\Http\JsonResponse;
+use As\OnecApi\Stock\StockEngineBootstrap;
+use As\OnecApi\StockImportOptions;
 use Bitrix\Catalog\GroupTable;
 use Bitrix\Catalog\PriceTable;
 use Bitrix\Catalog\ProductTable;
 use Bitrix\Main\Application;
 use Bitrix\Main\Loader;
-use As\OnecApi\Stock\StockEngineBootstrap;
-use As\OnecApi\StockImportOptions;
 
 /**
  * Импорт цен (POST JSON): items с product_xml_id, catalog_group_id, price, currency.
@@ -46,15 +47,7 @@ final class PriceImportService
         }
 
         if (strlen($raw) > $maxBodyBytes) {
-            return [
-                'http_code' => 413,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'PAYLOAD_TOO_LARGE',
-                    'message' => 'Превышен размер тела запроса.',
-                    'max_bytes' => $maxBodyBytes,
-                ],
-            ];
+            return JsonResponse::payloadTooLarge($maxBodyBytes);
         }
 
         $decoded = json_decode($raw, true);

@@ -2,65 +2,32 @@
 
 namespace As\OnecApi\Price;
 
-use As\OnecApi\Stock\StockEngineBootstrap;
+use As\OnecApi\Catalog\CatalogReadPreflight;
+use As\OnecApi\Http\JsonResponse;
 use Bitrix\Catalog\GroupTable;
 use Bitrix\Catalog\PriceTable;
 use Bitrix\Catalog\ProductTable;
-use Bitrix\Main\Loader;
 
 /**
  * Чтение цен по XML_ID элемента каталога/ТП.
  */
 final class PriceReadService
 {
-    private const API_VERSION = '1';
-
     /**
      * @return array{http_code:int, data:array}
      */
     public static function queryByXmlId(string $xmlId): array
     {
-        $xmlId = trim($xmlId);
-        if ($xmlId === '') {
+        $pre = CatalogReadPreflight::forReadByXmlId($xmlId);
+        if (!$pre['ok']) {
             return [
-                'http_code' => 400,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'BAD_REQUEST',
-                    'message' => 'Укажите параметр xml_id.',
-                    'api_version' => self::API_VERSION,
-                ],
+                'http_code' => $pre['http_code'],
+                'data' => $pre['data'],
             ];
         }
 
-        if (!Loader::includeModule('catalog') || !Loader::includeModule('iblock')) {
-            return [
-                'http_code' => 500,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'MODULES',
-                    'message' => 'Не подключены модули catalog или iblock.',
-                    'api_version' => self::API_VERSION,
-                ],
-            ];
-        }
-
-        StockEngineBootstrap::ensureLoaded();
-
-        $catalogIblockIds = asStockImportFrom1cGetCatalogIblockIds();
-        $elementId = asStockImportFrom1cResolveElementIdByXml($xmlId, $catalogIblockIds);
-        if ($elementId <= 0) {
-            return [
-                'http_code' => 404,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'PRODUCT_NOT_FOUND',
-                    'message' => 'Элемент с указанным XML_ID не найден в каталоге.',
-                    'api_version' => self::API_VERSION,
-                    'product_xml_id' => $xmlId,
-                ],
-            ];
-        }
+        $xmlId = $pre['xml_id'];
+        $elementId = $pre['element_id'];
 
         $productRow = ProductTable::getList([
             'filter' => ['=ID' => $elementId],
@@ -69,16 +36,11 @@ final class PriceReadService
         ])->fetch();
 
         if (!$productRow) {
+            $err = CatalogReadPreflight::notCatalogProduct($xmlId, $elementId);
+
             return [
-                'http_code' => 422,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'NOT_CATALOG_PRODUCT',
-                    'message' => 'Нет торговой позиции catalog для этого ID.',
-                    'api_version' => self::API_VERSION,
-                    'product_xml_id' => $xmlId,
-                    'element_id' => $elementId,
-                ],
+                'http_code' => $err['http_code'],
+                'data' => $err['data'],
             ];
         }
 
@@ -100,7 +62,7 @@ final class PriceReadService
         if ($groupIds !== []) {
             $gr = GroupTable::getList([
                 'filter' => ['@ID' => $groupIds],
-                'select' => ['ID', 'NAME', 'BASE'],
+                'select' => ['ID', 'NAME', 'BASE', 'XML_ID'],
             ]);
             while ($g = $gr->fetch()) {
                 $groupMap[(int) $g['ID']] = $g;
@@ -115,7 +77,7 @@ final class PriceReadService
                 'price_id' => (int) $row['ID'],
                 'catalog_group_id' => $gid,
                 'price_type_name' => $info ? (string) $info['NAME'] : '',
-                'price_type_xml_id' => '',
+                'price_type_xml_id' => $info ? (string) ($info['XML_ID'] ?? '') : '',
                 'base' => $info ? ($info['BASE'] === 'Y') : false,
                 'price' => (float) $row['PRICE'],
                 'currency' => (string) $row['CURRENCY'],
@@ -128,7 +90,7 @@ final class PriceReadService
             'http_code' => 200,
             'data' => [
                 'ok' => true,
-                'api_version' => self::API_VERSION,
+                'api_version' => JsonResponse::API_VERSION,
                 'product_xml_id' => $xmlId,
                 'element_id' => $elementId,
                 'prices' => $prices,

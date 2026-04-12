@@ -6,7 +6,8 @@
 **English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/http/jsonapikernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
 
 **Source code:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api) — canonical repository for this module (`MODULE_ID` **`as.onec_api`**).  
-**Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).
+**Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).  
+**Доработка архитектуры / карта файлов для ИИ:** [EXTENSION.md](EXTENSION.md).
 
 | | |
 |---|---|
@@ -18,6 +19,27 @@
 **Breaking change (1.0.6+):** the former REST method `as.stock.import` and webhook registration were **removed**. Clients that called `/rest/.../as.stock.import` must send the **same JSON body** via **POST** to the HTTP URLs below.
 
 **Breaking change (1.1.3+):** `local/tools/as_onecstock_api.php` and `local/tools/as_onecstock_import.php` were **removed**. Use only **`/local/tools/as_onec_api.php`** with `path=/v1/...` (import: `?path=/v1/stocks/import`), or `public/http_import.php` for POST-only stock import.
+
+## Critical behavior
+
+Кратко, что важно не сломать при сопровождении (эксплуатация):
+
+| Тема | Суть |
+|------|------|
+| Точка входа HTTP | Один скрипт `local/tools/as_onec_api.php`, маршруты `path=` / `PATH_INFO`, роутер [`JsonApiKernel`](lib/http/jsonapikernel.php). |
+| Ленивый движок | [`StockEngineBootstrap::ensureLoaded()`](lib/stock/stockenginebootstrap.php) вызывается в сервисах **после** `Loader::includeModule('catalog'/'iblock')`. [`include.php`](include.php) не подключает `stock_import_engine.php` при каждом `includeModule`. |
+| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/stock/importservice.php). |
+| Breaking 1.1.3 | Удалены `local/tools/as_onecstock_*.php`; только POST: [`public/http_import.php`](public/http_import.php). |
+| Лимиты | `b_option` модуля (настройки админки) + fallback `ONEC_STOCK_IMPORT_*` в `php_interface`. |
+
+## Module settings
+
+Файл: [`options.php`](options.php). Форма **Настройки → Настройки продукта → Модули → as.onec_api** (`bitrix/admin/settings.php`):
+
+- Сохранение (`Update` / `RestoreDefaults`) выполняется только при **`GetGroupRight('as.onec_api') >= 'W'`**.
+- **`check_bitrix_sessid()` не вызывается** намеренно: при вложенном выводе формы через ядро `settings.php` проверка sessid давала ложный отказ. Защита — права на модуль и стандартная админ-сессия Bitrix (как у многих partner-модулей).
+
+Это **не** то же самое, что кнопка **Install** на `partner_modules.php`: там sessid по-прежнему проверяет **ядро** (см. раздел Troubleshooting ниже).
 
 ## Links
 
@@ -55,7 +77,7 @@ curl -sS -G "https://example.ru/local/tools/as_onec_api.php" \
 
 - Versioned JSON API (`JsonApiKernel`): stocks, prices, products; single canonical `as_onec_api.php`.
 - Bitrix **`rest`** module not required for this contour.
-- Configurable limits via **Settings → Modules → as.onec_api** with fallback to `ONEC_STOCK_IMPORT_*` in `php_interface` (optional).
+- Limits and lazy-load details: [Critical behavior](#critical-behavior).
 - Batch processing, body size limits, optional default store ID.
 - Optional: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
 
@@ -75,6 +97,21 @@ Module ID is **`as.onec_api`** (contains a **dot**). In 1C-Bitrix such IDs are t
 If you do not see `as.onec_api` on `module_admin.php`, that is **expected**. Install from **`partner_modules.php`**.
 
 This module is deployed as files under `local/modules/as.onec_api/` (not necessarily from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/)).
+
+### HTTP entry script in `local/tools/` (not created by Install)
+
+The JSON API is invoked via **`/local/tools/as_onec_api.php`**. **Installing the module in the admin (`partner_modules.php` → Install) does not copy anything into `local/tools/`** — Bitrix only registers the module under `local/modules/as.onec_api/`.
+
+The repository therefore includes a **reference copy** of that script inside the module: [`tools/as_onec_api.php`](tools/as_onec_api.php) (same content as the site entry point).
+
+After you deploy the module, **copy or symlink it once** into `local/tools/` (create the directory if needed):
+
+```bash
+mkdir -p local/tools
+cp local/modules/as.onec_api/tools/as_onec_api.php local/tools/as_onec_api.php
+```
+
+If `local/tools/as_onec_api.php` already exists (e.g. from an older setup), compare it with the module copy when upgrading.
 
 1. Copy or clone into **`local/modules/as.onec_api/`**:
 
@@ -99,7 +136,7 @@ On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescript
 
 ## Development
 
-- **Where to change logic:** `include/stock_import_engine.php` (import helpers), `lib/` (services, `Installer`), `options.php`, `public/`, project `local/tools/as_onec_api.php`.
+- **Where to change logic:** `include/stock_import_engine.php` (import helpers), `lib/` (services, `Installer`), `options.php`, `public/`, site entry `local/tools/as_onec_api.php` (reference copy in [`tools/as_onec_api.php`](tools/as_onec_api.php)).
 - **Do not duplicate** HTTP response logic: extend [`include/http_import_response.php`](include/http_import_response.php) or the engine only.
 - **Smoke test:** `php -l` on edited files; POST to `as_onec_api.php?path=/v1/stocks/import` with a tiny `items` array and valid key; or use [docs/postman-testing.md](docs/postman-testing.md).
 
@@ -120,9 +157,9 @@ On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescript
 
 Install only from **`partner_modules.php`** unless you rename the module (breaking change).
 
-### “Install does nothing” on `partner_modules.php` (silent)
+### `partner_modules.php`: “Install does nothing” (silent)
 
-Install runs only when `install=Y`, user can **`edit_other_settings`**, and **`check_bitrix_sessid()`** succeeds. Use a fresh admin session and the **Install** action from the table (not an old bookmark with stale `sessid`).
+**Только установка модуля:** ядро выполняет install, если `install=Y`, у пользователя есть **`edit_other_settings`**, и проходит **`check_bitrix_sessid()`**. Откройте страницу заново, зайдите админом и нажмите **Install** в таблице (не старый bookmark с просроченным `sessid`). К **форме настроек** модуля в `settings.php` это не относится — см. [Module settings](#module-settings).
 
 **Emergency install:** `/local/modules/as.onec_api/install/tools/force_install.php` once — then **delete on production**.
 
@@ -153,7 +190,7 @@ MIT — see [LICENSE](LICENSE).
 
 **Русский (кратко):**
 
-- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`**. Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl и контракты: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
+- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`** — файл в `local/tools/` **не создаётся** установкой модуля; эталон лежит в репозитории: **`local/modules/as.onec_api/tools/as_onec_api.php`** (скопировать в `local/tools/` вручную). **Настройки модуля:** сохранение при праве **W** на `as.onec_api`, **без** `check_bitrix_sessid()` в форме (см. раздел *Module settings* выше). Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Репозиторий:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api).
 - **Переустановка:** Удалить модуль → Установить; или обновить файлы — при смене версии в `install/version.php` выполнится `syncIfNewVersion()`. Аварийно: **`force_install.php`** один раз, затем удалить с прода.
 - **Разработка:** `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/http/`, `lib/stock/`, `lib/price/`, `lib/product/`). Общий обзор проекта: корневой [`README.md`](../../../README.md).
