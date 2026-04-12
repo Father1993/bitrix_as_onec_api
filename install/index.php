@@ -44,7 +44,7 @@ class as_onec_api extends CModule
             return false;
         }
 
-        require_once dirname(__DIR__) . '/lib/installer.php';
+        require_once dirname(__DIR__) . '/lib/Installer.php';
 
         try {
             ModuleManager::registerModule($this->MODULE_ID);
@@ -103,7 +103,7 @@ class as_onec_api extends CModule
 
     public function InstallDB($arParams = [])
     {
-        require_once dirname(__DIR__) . '/lib/installer.php';
+        require_once dirname(__DIR__) . '/lib/Installer.php';
         Installer::grantAdminGroupsWriteAccess();
 
         return true;
@@ -136,7 +136,7 @@ class as_onec_api extends CModule
 
     public function UnInstallEvents()
     {
-        require_once dirname(__DIR__) . '/lib/installer.php';
+        require_once dirname(__DIR__) . '/lib/Installer.php';
         Installer::unregisterLegacyRestHandlers();
 
         return true;
