@@ -98,6 +98,21 @@ If you do not see `as.onec_api` on `module_admin.php`, that is **expected**. Ins
 
 This module is deployed as files under `local/modules/as.onec_api/` (not necessarily from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/)).
 
+### HTTP entry script in `local/tools/` (not created by Install)
+
+The JSON API is invoked via **`/local/tools/as_onec_api.php`**. **Installing the module in the admin (`partner_modules.php` → Install) does not copy anything into `local/tools/`** — Bitrix only registers the module under `local/modules/as.onec_api/`.
+
+The repository therefore includes a **reference copy** of that script inside the module: [`tools/as_onec_api.php`](tools/as_onec_api.php) (same content as the site entry point).
+
+After you deploy the module, **copy or symlink it once** into `local/tools/` (create the directory if needed):
+
+```bash
+mkdir -p local/tools
+cp local/modules/as.onec_api/tools/as_onec_api.php local/tools/as_onec_api.php
+```
+
+If `local/tools/as_onec_api.php` already exists (e.g. from an older setup), compare it with the module copy when upgrading.
+
 1. Copy or clone into **`local/modules/as.onec_api/`**:
 
    ```bash
@@ -121,7 +136,7 @@ On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescript
 
 ## Development
 
-- **Where to change logic:** `include/stock_import_engine.php` (import helpers), `lib/` (services, `Installer`), `options.php`, `public/`, project `local/tools/as_onec_api.php`.
+- **Where to change logic:** `include/stock_import_engine.php` (import helpers), `lib/` (services, `Installer`), `options.php`, `public/`, site entry `local/tools/as_onec_api.php` (reference copy in [`tools/as_onec_api.php`](tools/as_onec_api.php)).
 - **Do not duplicate** HTTP response logic: extend [`include/http_import_response.php`](include/http_import_response.php) or the engine only.
 - **Smoke test:** `php -l` on edited files; POST to `as_onec_api.php?path=/v1/stocks/import` with a tiny `items` array and valid key; or use [docs/postman-testing.md](docs/postman-testing.md).
 
@@ -175,7 +190,7 @@ MIT — see [LICENSE](LICENSE).
 
 **Русский (кратко):**
 
-- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`**. **Настройки модуля:** сохранение при праве **W** на `as.onec_api`, **без** `check_bitrix_sessid()` в форме (см. раздел *Module settings* выше). Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
+- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`** — файл в `local/tools/` **не создаётся** установкой модуля; эталон лежит в репозитории: **`local/modules/as.onec_api/tools/as_onec_api.php`** (скопировать в `local/tools/` вручную). **Настройки модуля:** сохранение при праве **W** на `as.onec_api`, **без** `check_bitrix_sessid()` в форме (см. раздел *Module settings* выше). Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Репозиторий:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api).
 - **Переустановка:** Удалить модуль → Установить; или обновить файлы — при смене версии в `install/version.php` выполнится `syncIfNewVersion()`. Аварийно: **`force_install.php`** один раз, затем удалить с прода.
 - **Разработка:** `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/http/`, `lib/stock/`, `lib/price/`, `lib/product/`). Общий обзор проекта: корневой [`README.md`](../../../README.md).

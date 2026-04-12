@@ -19,7 +19,7 @@ flowchart LR
   svc -->|"StockEngineBootstrap::ensureLoaded"| eng
 ```
 
-- Точка входа: [local/tools/as_onec_api.php](../../tools/as_onec_api.php) (константы `STOP_STATISTICS` и т.д., затем prolog).
+- Рабочая точка входа веб-сервера: `local/tools/as_onec_api.php` ([относительно корня сайта](../../tools/as_onec_api.php)). Установка модуля в админке **не** копирует этот файл — эталон в репозитории: [tools/as_onec_api.php](tools/as_onec_api.php) (скопировать в `local/tools/`).
 - После prolog: [include/api_http_bootstrap.php](include/api_http_bootstrap.php) — `Loader::includeModule('as.onec_api')`, создание [JsonApiKernel](lib/http/jsonapikernel.php).
 - Процедурный движок [include/stock_import_engine.php](include/stock_import_engine.php) **не** подключается из [include.php](include.php); его подгружает [StockEngineBootstrap](lib/stock/stockenginebootstrap.php) после подключения `catalog` / `iblock`.
 
@@ -27,6 +27,7 @@ flowchart LR
 
 | Задача | Файл(ы) |
 |--------|---------|
+| Скрипт точки входа `local/tools/` | Эталон в репозитории: [tools/as_onec_api.php](tools/as_onec_api.php) — на сайт копируется вручную, не через Install |
 | Новый HTTP-маршрут | [lib/http/jsonapikernel.php](lib/http/jsonapikernel.php) — `routes()` и обработчик |
 | Авторизация GET / query | [lib/http/apikeyguard.php](lib/http/apikeyguard.php); функции в [include/stock_import_engine.php](include/stock_import_engine.php) (`asStockApiAuthBySecretKey`, `asStockImportFrom1cAuth`) |
 | Общий preflight чтения по `xml_id` | [lib/catalog/catalogreadpreflight.php](lib/catalog/catalogreadpreflight.php) — `CatalogReadPreflight` |
