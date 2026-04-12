@@ -99,6 +99,7 @@ final class StockReadService
 
             $payload['stores'] = $stores;
             $payload['quantity_total'] = $total;
+            $payload['catalog_quantity'] = (float) $productRow['QUANTITY'];
         } else {
             $payload['quantity'] = (float) $productRow['QUANTITY'];
         }

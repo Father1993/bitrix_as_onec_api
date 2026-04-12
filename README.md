@@ -55,11 +55,16 @@
 
 | Метод | path | Описание |
 |--------|------|----------|
-| GET | `/v1/stocks` | Остатки по `xml_id` |
+| GET | `/v1/stocks` | Остатки по `xml_id` (см. поля ответа ниже) |
 | POST | `/v1/stocks/import`, `/v1/stocks` | Импорт остатков |
 | GET | `/v1/prices` | Цены по `xml_id` |
 | POST | `/v1/prices` | Импорт цен (`items`: `product_xml_id`, `catalog_group_id`, `price`, `currency`) |
 | GET | `/v1/products` | Элемент ИБ + `ProductTable` по `xml_id` |
+
+**GET `/v1/stocks` — поля JSON:**
+
+- **`inventory_management: false`:** **`quantity`** — значение `ProductTable.QUANTITY`.
+- **`inventory_management: true`:** **`stores`** (остатки по `b_catalog_store_product`), **`quantity_total`** — сумма `stores[].amount`; **`catalog_quantity`** — `ProductTable.QUANTITY` (часто совпадает с «Остаток» в карточке ТП). Пока по товару нет строк складов, `quantity_total` может быть `0`, а `catalog_quantity` — ненулевым; для сверки с витриной используйте **`catalog_quantity`**, для склада — **`stores` / `quantity_total`**.
 
 - **`/local/modules/as.onec_api/public/http_import.php`** — альтернатива: только POST импорт остатков (внутри выставляет `path=/v1/stocks/import`).
 - **`public/http_stocks_import.php`** — после чужого `prolog`; по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.

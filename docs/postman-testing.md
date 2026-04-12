@@ -22,6 +22,8 @@
 
 **Ожидание:** `200` и JSON с остатками; `400` без `xml_id`; `401` без ключа; `404` если товар не найден.
 
+При включённом складском учёте (`inventory_management: true`) в ответе есть **`quantity_total`** (сумма по `stores`) и **`catalog_quantity`** (`ProductTable.QUANTITY`, как в карточке товара). Подробнее — [README.md](../README.md) (раздел GET `/v1/stocks`).
+
 ---
 
 ## 2. GET цены — `/v1/prices`
