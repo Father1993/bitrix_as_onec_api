@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# PHP
+vendor/
+composer.lock
+
+# Logs (runtime on target sites)
+*.log
+
+# Bitrix cache (if ever copied into tree)
+bitrix/cache/
+bitrix/managed_cache/

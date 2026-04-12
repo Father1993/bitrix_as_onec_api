@@ -1,0 +1,118 @@
+<?php
+
+use As\Onecstock\Installer;
+use Bitrix\Main\ModuleManager;
+
+IncludeModuleLangFile(__FILE__);
+
+if (class_exists('as_onecstock', false)) {
+    return;
+}
+
+/**
+ * Имя класса as_onecstock задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
+ */
+class as_onecstock extends CModule
+{
+    public $MODULE_ID = 'as.onecstock';
+    public $MODULE_VERSION;
+    public $MODULE_VERSION_DATE;
+    public $MODULE_NAME;
+    public $MODULE_DESCRIPTION;
+
+    public function __construct()
+    {
+        $arModuleVersion = [];
+        include __DIR__ . '/version.php';
+        $this->MODULE_VERSION = $arModuleVersion['VERSION'];
+        $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
+        $this->MODULE_NAME = GetMessage('AS_ONECSTOCK_MODULE_NAME');
+        $this->MODULE_DESCRIPTION = GetMessage('AS_ONECSTOCK_MODULE_DESCRIPTION');
+    }
+
+    public function DoInstall()
+    {
+        global $USER, $APPLICATION;
+
+        if (!is_object($USER) || !$USER->IsAdmin()) {
+            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+
+            return false;
+        }
+
+        try {
+            ModuleManager::registerModule($this->MODULE_ID);
+            $this->InstallDB();
+            $this->InstallEvents();
+        } catch (\Exception $e) {
+            $APPLICATION->ThrowException($e->getMessage());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    public function DoUninstall()
+    {
+        global $USER, $APPLICATION;
+
+        if (!is_object($USER) || !$USER->IsAdmin()) {
+            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+
+            return false;
+        }
+
+        try {
+            $this->UnInstallEvents();
+            $this->UnInstallDB();
+        } catch (\Exception $e) {
+            $APPLICATION->ThrowException($e->getMessage());
+
+            return false;
+        }
+
+        return true;
+    }
+
+    public function InstallDB($arParams = [])
+    {
+        return true;
+    }
+
+    public function UnInstallDB($arParams = [])
+    {
+        ModuleManager::unRegisterModule($this->MODULE_ID);
+
+        return true;
+    }
+
+    public function InstallEvents()
+    {
+        require_once dirname(__DIR__) . '/lib/installer.php';
+        Installer::syncRestEvents();
+
+        return true;
+    }
+
+    public function UnInstallEvents()
+    {
+        $em = \Bitrix\Main\EventManager::getInstance();
+        $em->unregisterEventHandler(
+            'rest',
+            'OnRestServiceBuildDescription',
+            $this->MODULE_ID,
+            '\\As\\Onecstock\\Rest\\RestService',
+            'onRestServiceBuildDescription'
+        );
+        $em->unregisterEventHandler(
+            'rest',
+            'OnRestServiceBuildDescription',
+            $this->MODULE_ID,
+            '\\As\\Onecstock\\Rest\\StockImportService',
+            'onRestServiceBuildDescription'
+        );
+
+        return true;
+    }
+}
