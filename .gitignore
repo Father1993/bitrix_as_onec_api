@@ -2,9 +2,10 @@
 .DS_Store
 Thumbs.db
 
-# IDE
+# IDE / local tools
 .idea/
 .vscode/
+.qwen/
 *.swp
 *.swo
 *~
