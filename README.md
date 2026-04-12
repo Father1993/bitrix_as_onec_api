@@ -71,6 +71,24 @@ This module is deployed as files under `local/modules/as.onecstock/` (not necess
 
 On upgrade to **1.0.6+**, the module run clears legacy **`OnRestServiceBuildDescription`** handlers from the database (if the **rest** module is installed), so old REST registrations for this module are removed automatically.
 
+## Reinstall and upgrades
+
+- **Deploy new files only:** replace `local/modules/as.onecstock/`. On the next request that loads the module, `Installer::syncIfNewVersion()` runs: removes legacy REST handlers (if `rest` is installed), reapplies admin **W** rights, updates `install_script_version` in options.
+- **Clean reinstall:** **partner_modules.php** → Uninstall `as.onecstock` → Install again. Options stored in `b_option` for the module may be cleared on uninstall depending on core behaviour; re-check **Settings → Modules → as.onecstock** and `ONEC_STOCK_IMPORT_*` in `config.php`.
+- **Emergency install:** [`install/tools/force_install.php`](install/tools/force_install.php) once as admin, then delete that file on production.
+
+## Development
+
+- **Where to change logic:** `include/stock_import_engine.php` (import), `lib/` (D7 helpers, `Installer`), `options.php` (admin form), entry points in `public/` and project file `local/tools/as_onecstock_import.php`.
+- **Do not duplicate** HTTP response logic: extend [`include/http_import_response.php`](include/http_import_response.php) or the engine only.
+- **Smoke test:** `php -l` on edited files; POST to `/local/tools/as_onecstock_import.php` with a tiny `items` array and valid key.
+
+## Scaling and operations
+
+- Tune **limits** via module settings or `ONEC_STOCK_IMPORT_MAX_ITEMS`, `ONEC_STOCK_IMPORT_MAX_BODY_BYTES`, `ONEC_STOCK_IMPORT_BATCH_SIZE` in `config.php`.
+- **Heavy load:** prefer fewer large batches within limits over many tiny requests; ensure PHP-FPM timeouts and memory fit worst-case batch; optional queue in front of the endpoint (1C → message broker → worker → HTTP) keeps the public URL simple.
+- **Observability:** log files under `upload/logs/` when logging is enabled in the engine; monitor HTTP 413/401 rates from the reverse proxy.
+
 ## Troubleshooting
 
 ### Why `module_admin.php` never lists this module (by design)
@@ -134,4 +152,11 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Русский:** ID с **точкой** → только **`partner_modules.php`**, не `module_admin.php`. Если кнопка **Установить** только перезагружает страницу — один раз откройте **`/local/modules/as.onecstock/install/tools/force_install.php`** под админом, затем **удалите этот файл**. Импорт остатков: **POST** на **`/local/tools/as_onecstock_import.php`**. Репозиторий: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).
+**Русский (кратко):**
+
+- **Установка:** только **`/bitrix/admin/partner_modules.php`** (не `module_admin.php`). **Импорт:** **POST** → **`/local/tools/as_onecstock_import.php`**, JSON как в разделе «Тело запроса» в [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
+- **Переустановка:** в админке **Удалить** модуль → **Установить** снова; либо просто обновить файлы модуля — при смене версии в `install/version.php` выполнится синхронизация (снятие старых REST-обработчиков, права админов). Аварийно: **`force_install.php`** один раз, потом удалить с прода.
+- **Разработка:** правки в `local/modules/as.onecstock/` (`stock_import_engine.php`, `lib/`, `http_import_response.php`); не дублировать ответ JSON в трёх входах. Проект целиком: корневой [`README.md`](../../../README.md).
+- **Масштабирование:** лимиты в настройках модуля и `ONEC_STOCK_IMPORT_*`; при росте нагрузки — ресурсы PHP, батчи, при необходимости очередь перед endpoint.
+
+Репозиторий модуля: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).
