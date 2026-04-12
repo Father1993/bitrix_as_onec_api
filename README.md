@@ -81,6 +81,12 @@ Core file `bitrix/modules/main/admin/partner_modules.php` only runs install when
 2. Click **Install** from the **action menu in the table** (do not reuse an old bookmarked URL with `sessid=`).
 3. After a successful install the browser should redirect to a URL containing **`result=OK`** and **`mod=as.onecstock`**.
 
+**Emergency install (if the button only reloads the page):** while logged in as admin, open once in the browser:
+
+`/local/modules/as.onecstock/install/tools/force_install.php`
+
+It runs the same `DoInstall()` as the official installer and then redirects to `partner_modules.php?result=OK`. **Delete `install/tools/force_install.php` on production after use** (security).
+
 If it still does nothing:
 
 4. Confirm **`PARTNER_NAME`** / **`PARTNER_URI`** in `install/index.php` (included in this repo).
@@ -117,4 +123,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Русский:** ID **`as.onecstock`** содержит **точку** — ядро показывает такой модуль **только** на **`partner_modules.php`**, а **`module_admin.php`** специально **отфильтровывает** все модули с точкой в имени папки — это **не ошибка**. Установка: кнопка **Установить** в списке на `partner_modules.php` (не старый URL с `sessid` — иначе установка **молча не выполнится**). REST: `as.stock.import`. Код: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock). Путь: `local/modules/as.onecstock`.
+**Русский:** ID с **точкой** → только **`partner_modules.php`**, не `module_admin.php`. Если кнопка **Установить** только перезагружает страницу — один раз откройте **`/local/modules/as.onecstock/install/tools/force_install.php`** под админом, затем **удалите этот файл**. REST: `as.stock.import`. Репозиторий: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).

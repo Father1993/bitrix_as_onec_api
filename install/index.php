@@ -5,10 +5,6 @@ use Bitrix\Main\ModuleManager;
 
 IncludeModuleLangFile(__FILE__);
 
-if (class_exists('as_onecstock', false)) {
-    return;
-}
-
 /**
  * Имя класса as_onecstock задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
  */
@@ -119,6 +115,16 @@ class as_onecstock extends CModule
         require_once dirname(__DIR__) . '/lib/installer.php';
         Installer::syncRestEvents();
 
+        return true;
+    }
+
+    public function InstallFiles()
+    {
+        return true;
+    }
+
+    public function UnInstallFiles()
+    {
         return true;
     }
 
