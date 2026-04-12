@@ -1,6 +1,6 @@
 <?php
 
-namespace As\Onecstock;
+namespace As\OnecApi;
 
 use Bitrix\Main\Config\Option;
 
@@ -10,7 +10,7 @@ use Bitrix\Main\Config\Option;
  */
 final class StockImportOptions
 {
-    public const MODULE_ID = 'as.onecstock';
+    public const MODULE_ID = 'as.onec_api';
 
     public static function getMaxBodyBytes(): int
     {

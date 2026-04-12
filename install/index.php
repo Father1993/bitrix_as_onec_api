@@ -1,16 +1,16 @@
 <?php
 
-use As\Onecstock\Installer;
+use As\OnecApi\Installer;
 use Bitrix\Main\ModuleManager;
 
 IncludeModuleLangFile(__FILE__);
 
 /**
- * Имя класса as_onecstock задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
+ * Имя класса as_onec_api задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
  */
-class as_onecstock extends CModule
+class as_onec_api extends CModule
 {
-    public $MODULE_ID = 'as.onecstock';
+    public $MODULE_ID = 'as.onec_api';
     public $MODULE_VERSION;
     public $MODULE_VERSION_DATE;
     public $MODULE_NAME;
@@ -28,8 +28,8 @@ class as_onecstock extends CModule
         include __DIR__ . '/version.php';
         $this->MODULE_VERSION = $arModuleVersion['VERSION'];
         $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
-        $this->MODULE_NAME = GetMessage('AS_ONECSTOCK_MODULE_NAME');
-        $this->MODULE_DESCRIPTION = GetMessage('AS_ONECSTOCK_MODULE_DESCRIPTION');
+        $this->MODULE_NAME = GetMessage('AS_ONEC_API_MODULE_NAME');
+        $this->MODULE_DESCRIPTION = GetMessage('AS_ONEC_API_MODULE_DESCRIPTION');
         $this->PARTNER_NAME = 'Andrej Spinej';
         $this->PARTNER_URI = 'https://github.com/Father1993/bitrix-as-onecstock';
     }
@@ -39,13 +39,14 @@ class as_onecstock extends CModule
         global $USER, $APPLICATION;
 
         if (!is_object($USER) || !$USER->IsAdmin()) {
-            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+            $APPLICATION->ThrowException(GetMessage('AS_ONEC_API_INSTALL_PERM'));
 
             return false;
         }
 
         try {
             ModuleManager::registerModule($this->MODULE_ID);
+            Installer::migrateOptionsFromLegacyStockModule();
             $this->InstallDB();
             $this->InstallEvents();
         } catch (\Throwable $e) {
@@ -81,7 +82,7 @@ class as_onecstock extends CModule
         global $USER, $APPLICATION;
 
         if (!is_object($USER) || !$USER->IsAdmin()) {
-            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+            $APPLICATION->ThrowException(GetMessage('AS_ONEC_API_INSTALL_PERM'));
 
             return false;
         }

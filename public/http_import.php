@@ -4,8 +4,8 @@
  * Прямой HTTP-endpoint импорта остатков (БУС). POST + JSON.
  * Авторизация: X-Stock-Import-Key / access_key / login+password (см. stock_import_engine.php).
  *
- * URL: .../local/modules/as.onecstock/public/http_import.php
- * Удобнее для интеграций: /local/tools/as_onecstock_import.php
+ * URL: .../local/modules/as.onec_api/public/http_import.php
+ * Канонический API: /local/tools/as_onec_api.php; алиас импорта: /local/tools/as_onecstock_import.php
  */
 
 define('STOP_STATISTICS', true);

@@ -3,7 +3,7 @@
 return [
     'autoload' => [
         'psr-4' => [
-            'As\\Onecstock\\' => 'lib/',
+            'As\\OnecApi\\' => 'lib/',
         ],
     ],
 ];

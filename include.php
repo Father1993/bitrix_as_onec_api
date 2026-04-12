@@ -1,20 +1,18 @@
 <?php
 
 /**
- * Подключение модуля as.onecstock.
+ * Подключение модуля as.onec_api (1C JSON API: остатки, цены, товары).
  *
- * PSR-4: As\Onecstock → lib/ (см. .settings.php).
+ * PSR-4: As\OnecApi → lib/ (см. .settings.php).
  *
- * Процедурный include/stock_import_engine.php подключается явно: глобальные функции asStockImportFrom1c*
- * нужны для HTTP-эндпоинтов, агентов и include public/http_stocks_import.php после prolog. Загрузка при
- * каждом includeModule — осознанный компромисс.
+ * Процедурный {@see include/stock_import_engine.php} не подключается здесь: ленивая загрузка через
+ * {@see \As\OnecApi\Stock\StockEngineBootstrap::ensureLoaded()} при обработке HTTP-маршрутов (см. JsonApiKernel).
  */
 
 if (!defined('B_PROLOG_INCLUDED') || B_PROLOG_INCLUDED !== true) {
     die();
 }
 
-require_once __DIR__ . '/include/stock_import_engine.php';
 require_once __DIR__ . '/lib/installer.php';
 
-\As\Onecstock\Installer::syncIfNewVersion();
+\As\OnecApi\Installer::syncIfNewVersion();

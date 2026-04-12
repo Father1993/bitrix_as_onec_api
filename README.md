@@ -1,14 +1,16 @@
-# as.onecstock — 1C stock import for 1C-Bitrix
+# as.onec_api — 1C JSON API for 1C-Bitrix (stocks, prices, catalog)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Father1993%2Fbitrix--as--onecstock-181717?logo=github)](https://github.com/Father1993/bitrix-as-onecstock)
 
-**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes **HTTP JSON** integration: **POST** to **import** catalog stock and **GET** (versioned API) to **read** stock by product `xml_id`. Uses catalog / iblock APIs and supports store mapping (including list-property based warehouse codes). This is a **custom** JSON API in `local/`, not Bitrix core `/rest/` methods.
+**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes **HTTP JSON** integration: versioned **`JsonApiKernel`** at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
+
+**Upstream:** the public repo [Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock) documents **`as.onecstock`** and older entry URLs. This tree is **`as.onec_api`** (MODULE_ID, unified `as_onec_api.php`, lazy `stock_import_engine`). If you clone upstream, copy into `local/modules/as.onec_api/` and install that module ID, or merge selectively.
 
 | | |
 |---|---|
-| **Module ID** | `as.onecstock` |
-| **Integration** | POST import + GET read (`JsonApiKernel`, see below) |
+| **Module ID** | `as.onec_api` |
+| **Integration** | Single entry `as_onec_api.php` + deprecated aliases `as_onecstock_*` |
 | **Auth** | `X-Stock-Import-Key` / `access_key` (body or query) / `login`+`password` (POST body only) |
 | **PHP** | 7.4+ (project-tested; align with your Bitrix version) |
 
@@ -22,38 +24,39 @@
 
 ## HTTP entry points (recommended)
 
-### Import (POST)
+### Канонический URL
 
-- **`/local/tools/as_onecstock_import.php`** — удобный URL для интеграций (полный prolog, проверка ключа как у внешнего клиента).
-- **`/local/modules/as.onecstock/public/http_import.php`** — то же назначение, если веб-сервер отдаёт файлы из `local`.
-- **`public/http_stocks_import.php`** (в каталоге модуля) — подключать **после** чужого `prolog` (агент, внутренний сценарий); по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.
+- **`/local/tools/as_onec_api.php`** — единая точка входа: задайте маршрут **`path`** (query) или `PATH_INFO`. Роутер: [`As\OnecApi\Http\JsonApiKernel`](lib/http/jsonapikernel.php).
 
-Метод: **POST**, ответ: **JSON**, коды HTTP и формат ошибок — как в `asStockImportFrom1cRun()` (`include/stock_import_engine.php`).
+| Метод | path | Описание |
+|--------|------|----------|
+| GET | `/v1/stocks` | Остатки по `xml_id` |
+| POST | `/v1/stocks/import`, `/v1/stocks` | Импорт остатков (`asStockImportFrom1cRun`) |
+| GET | `/v1/prices` | Цены по `xml_id` |
+| POST | `/v1/prices` | Импорт цен (`items`: `product_xml_id`, `catalog_group_id`, `price`, `currency`) |
+| GET | `/v1/products` | Элемент ИБ + `ProductTable` по `xml_id` |
 
-### Read stock by xml_id (GET, API v1)
-
-- **`/local/tools/as_onecstock_api.php`** — фронт-контроллер [`As\Onecstock\Http\JsonApiKernel`](lib/http/jsonapikernel.php).
-- Маршрут: **`GET /v1/stocks`** с обязательным query **`xml_id`** (внешний код элемента, как при импорте).
-- Как задать путь, если `PATH_INFO` недоступен: **`?path=/v1/stocks&xml_id=...`**
-- Авторизация: заголовок **`X-Stock-Import-Key`** (рекомендуется) или **`access_key`** в query (ключ попадает в логи прокси — хуже).
-- Ответ **200**: `ok`, `api_version`, `element_id`, `product_xml_id`, `use_store_control`; при складах — **`stores[]`** (`store_id`, `amount`, `title`, `store_xml_id`, …) и **`quantity_total`**; без складов — **`quantity`**. Ошибки: **401**, **404** (`PRODUCT_NOT_FOUND`), **422** (`NOT_CATALOG_PRODUCT`), **400** (пустой `xml_id`).
+- **`/local/tools/as_onecstock_import.php`** — **deprecated**, только POST → тот же импорт остатков.
+- **`/local/tools/as_onecstock_api.php`** — **deprecated** → подключает `as_onec_api.php`.
+- **`/local/modules/as.onec_api/public/http_import.php`** — POST импорт остатков (без выбора path).
+- **`public/http_stocks_import.php`** — после чужого `prolog`; по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.
 
 Пример:
 
 ```bash
-curl -sS -G "https://example.ru/local/tools/as_onecstock_api.php" \
+curl -sS -G "https://example.ru/local/tools/as_onec_api.php" \
   --data-urlencode "path=/v1/stocks" \
   --data-urlencode "xml_id=YOUR-PRODUCT-XML-ID" \
   -H "X-Stock-Import-Key: YOUR_KEY"
 ```
 
-Новые методы API: добавлять маршруты в `JsonApiKernel` и обработчики в `lib/` (см. `StockReadService`).
+Новые маршруты: таблица в `JsonApiKernel::routes()` и сервисы в `lib/`.
 
 ## Features
 
-- Versioned JSON API gateway (`JsonApiKernel`) for read and future methods; import stays on dedicated POST scripts.
-- Single HTTP contour for inbound stock JSON (no Bitrix `rest` module required).
-- Configurable limits via **Settings → Modules → as.onecstock** with fallback to `ONEC_STOCK_IMPORT_*` constants in `php_interface` (optional).
+- Versioned JSON API gateway (`JsonApiKernel`): stocks, prices, products; single canonical `as_onec_api.php`.
+- No Bitrix `rest` module required for this contour.
+- Configurable limits via **Settings → Modules → as.onec_api** with fallback to `ONEC_STOCK_IMPORT_*` constants in `php_interface` (optional).
 - Batch processing, body size limits, optional default store ID.
 - Optional include: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
 
@@ -65,29 +68,29 @@ curl -sS -G "https://example.ru/local/tools/as_onecstock_api.php" \
 
 ### Where the module appears in the admin (important)
 
-Module ID is **`as.onecstock`** (contains a **dot**). In 1C-Bitrix such IDs are treated as **partner-style** modules:
+Module ID is **`as.onec_api`** (contains a **dot**). In 1C-Bitrix such IDs are treated as **partner-style** modules:
 
 - They are listed under **`/bitrix/admin/partner_modules.php`** (Настройки → Настройки продукта → **Модули** → подраздел партнёрских / маркетплейс-модулей — точное название пункта меню зависит от редакции).
 - They are **often not shown** on the short list **`/bitrix/admin/module_admin.php`**, which is oriented at modules **without** a dot in the ID.
 
-So if you do not see `as.onecstock` on `module_admin.php`, that is **expected**. Install from **`partner_modules.php`** (or use the same entry from **Product settings → Modules** tree if your build links there).
+So if you do not see `as.onec_api` on `module_admin.php`, that is **expected**. Install from **`partner_modules.php`** (or use the same entry from **Product settings → Modules** tree if your build links there).
 
-This module is deployed as files under `local/modules/as.onecstock/` (not necessarily downloaded from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/)).
+This module is deployed as files under `local/modules/as.onec_api/` (not necessarily downloaded from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/)).
 
 1. Copy this folder to:
 
-   `local/modules/as.onecstock/`
+   `local/modules/as.onec_api/`
 
    Or clone into that path:
 
    ```bash
-   git clone https://github.com/Father1993/bitrix-as-onecstock.git local/modules/as.onecstock
+   git clone https://github.com/Father1993/bitrix-as-onecstock.git local/modules/as.onec_api
    ```
 
-2. Open **`/bitrix/admin/partner_modules.php`**, find **AS: 1C stock import** (`as.onecstock`) → **Install**.  
+2. Open **`/bitrix/admin/partner_modules.php`**, find **AS: API обмена с 1С** (`as.onec_api`) → **Install**. If upgrading from **`as.onecstock`**, install **`as.onec_api`** first — installer copies `b_option` from the legacy module when it is still installed, then uninstall the old module.  
    The installer defines **`PARTNER_NAME`** / **`PARTNER_URI`** for correct partner-module registration.
 
-3. Point your 1C (or other client) to **`POST`** on **`/local/tools/as_onecstock_import.php`** (or `public/http_import.php` under the module) with the same JSON contract as documented in `stock_import_engine.php`. Configure **`ONEC_STOCK_IMPORT_ACCESS_KEY`** (or equivalent module settings) in `local/php_interface/include/config.php`.
+3. Point your 1C (or other client) to **`POST`** **`/local/tools/as_onec_api.php?path=/v1/stocks/import`** (or deprecated `as_onecstock_import.php` / `public/http_import.php`) with the JSON contract in `stock_import_engine.php`. Configure **`ONEC_STOCK_IMPORT_ACCESS_KEY`** (or module settings) in `local/php_interface/include/config.php`.
 
 4. Site-specific secrets (e.g. `ONEC_STOCK_IMPORT_ACCESS_KEY`) should live in your `local/php_interface/include/config.php` or environment policy — **do not commit production keys**.
 
@@ -95,15 +98,15 @@ On upgrade to **1.0.6+**, the module run clears legacy **`OnRestServiceBuildDesc
 
 ## Reinstall and upgrades
 
-- **Deploy new files only:** replace `local/modules/as.onecstock/`. On the next request that loads the module, `Installer::syncIfNewVersion()` runs: removes legacy REST handlers (if `rest` is installed), reapplies admin **W** rights, updates `install_script_version` in options.
-- **Clean reinstall:** **partner_modules.php** → Uninstall `as.onecstock` → Install again. Options stored in `b_option` for the module may be cleared on uninstall depending on core behaviour; re-check **Settings → Modules → as.onecstock** and `ONEC_STOCK_IMPORT_*` in `config.php`.
+- **Deploy new files only:** replace `local/modules/as.onec_api/`. On the next request that loads the module, `Installer::syncIfNewVersion()` runs: removes legacy REST handlers (if `rest` is installed), reapplies admin **W** rights, updates `install_script_version` in options.
+- **Clean reinstall:** **partner_modules.php** → Uninstall `as.onec_api` → Install again. Options stored in `b_option` for the module may be cleared on uninstall depending on core behaviour; re-check **Settings → Modules → as.onec_api** and `ONEC_STOCK_IMPORT_*` in `config.php`.
 - **Emergency install:** [`install/tools/force_install.php`](install/tools/force_install.php) once as admin, then delete that file on production.
 
 ## Development
 
-- **Where to change logic:** `include/stock_import_engine.php` (import), `lib/` (D7 helpers, `Installer`), `options.php` (admin form), entry points in `public/` and project file `local/tools/as_onecstock_import.php`.
+- **Where to change logic:** `include/stock_import_engine.php` (import helpers), `lib/` (services, `Installer`), `options.php`, `public/`, project `local/tools/as_onec_api.php`.
 - **Do not duplicate** HTTP response logic: extend [`include/http_import_response.php`](include/http_import_response.php) or the engine only.
-- **Smoke test:** `php -l` on edited files; POST to `/local/tools/as_onecstock_import.php` with a tiny `items` array and valid key.
+- **Smoke test:** `php -l` on edited files; POST to `as_onec_api.php?path=/v1/stocks/import` with a tiny `items` array and valid key.
 
 ## Scaling and operations
 
@@ -118,9 +121,9 @@ On upgrade to **1.0.6+**, the module run clears legacy **`OnRestServiceBuildDesc
 `ModuleManager::getModulesFromDisk()` filters folders by whether the module ID contains a **dot**:
 
 - **`/bitrix/admin/module_admin.php`** calls `getModulesFromDisk(true, false)` — **only modules whose folder name has no dot** (e.g. `main`, `iblock`).
-- **`/bitrix/admin/partner_modules.php`** calls `getModulesFromDisk(true, true, false)` — **only modules whose folder name contains a dot** (partner-style ID), e.g. `as.onecstock`.
+- **`/bitrix/admin/partner_modules.php`** calls `getModulesFromDisk(true, true, false)` — **only modules whose folder name contains a dot** (partner-style ID), e.g. `as.onec_api`.
 
-So **`as.onecstock` will not appear on `module_admin.php`**. This is not a bug. Install only from **`partner_modules.php`** (or rename the module to an ID without a dot if you need the other screen — breaking change).
+So **`as.onec_api` will not appear on `module_admin.php`**. This is not a bug. Install only from **`partner_modules.php`** (or rename the module to an ID without a dot if you need the other screen — breaking change).
 
 ### “Install does nothing” on `partner_modules.php` (silent)
 
@@ -130,18 +133,18 @@ Core file `bitrix/modules/main/admin/partner_modules.php` only runs install when
 
 1. Open **`partner_modules.php`** fresh, log in as admin.
 2. Click **Install** from the **action menu in the table** (do not reuse an old bookmarked URL with `sessid=`).
-3. After a successful install the browser should redirect to a URL containing **`result=OK`** and **`mod=as.onecstock`**.
+3. After a successful install the browser should redirect to a URL containing **`result=OK`** and **`mod=as.onec_api`**.
 
 **Emergency install (if the button only reloads the page):** while logged in as admin, open once in the browser:
 
-`/local/modules/as.onecstock/install/tools/force_install.php`
+`/local/modules/as.onec_api/install/tools/force_install.php`
 
 It runs the same `DoInstall()` as the official installer and then redirects to `partner_modules.php?result=OK`. **Delete `install/tools/force_install.php` on production after use** (security).
 
 If it still does nothing:
 
 4. Confirm **`PARTNER_NAME`** / **`PARTNER_URI`** in `install/index.php` (included in this repo).
-5. If **`CModule::CreateModuleObject('as.onecstock')`** fails (broken `install/index.php`), the core also skips install **silently** — check **PHP error log** and run `php -l` on `install/index.php`.
+5. If **`CModule::CreateModuleObject('as.onec_api')`** fails (broken `install/index.php`), the core also skips install **silently** — check **PHP error log** and run `php -l` on `install/index.php`.
 6. Check **`b_module`** (below) and clear **cache**.
 
 ### Module already installed or stuck state
@@ -151,10 +154,10 @@ Check the database (table **`b_module`**):
 ```sql
 SELECT MODULE_ID, VERSION, INSTALLED, DATE_ACTIVE
 FROM b_module
-WHERE MODULE_ID IN ('as.onecstock', 'mk27.onecstock');
+WHERE MODULE_ID IN ('as.onec_api', 'as.onecstock', 'mk27.onecstock');
 ```
 
-- If **`as.onecstock`** exists with **`INSTALLED = 'Y'`**, the module is already registered — use **Uninstall** if you need a clean reinstall, or open module settings.
+- If **`as.onec_api`** (or legacy **`as.onecstock`**) exists with **`INSTALLED = 'Y'`**, the module is already registered — use **Uninstall** if you need a clean reinstall, or open module settings.
 - Remove obsolete rows for old IDs (e.g. `mk27.onecstock`) after migration to avoid confusion.
 
 If installation fails mid-way, this module’s installer attempts to **roll back** (legacy REST cleanup and `unRegisterModule`) when an exception is thrown after `registerModule`.
@@ -166,7 +169,7 @@ Check the site PHP/webserver error log when clicking **Install**.
 ## Author
 
 **Andrej Spinej** — GitHub: [@Father1993](https://github.com/Father1993).  
-Module namespace: `As\Onecstock`.
+Module namespace: `As\OnecApi`.
 
 ## License
 
@@ -176,9 +179,9 @@ MIT — see [LICENSE](LICENSE).
 
 **Русский (кратко):**
 
-- **Установка:** только **`/bitrix/admin/partner_modules.php`** (не `module_admin.php`). **Импорт:** **POST** → **`/local/tools/as_onecstock_import.php`**, JSON как в разделе «Тело запроса» в [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
+- **Установка:** только **`/bitrix/admin/partner_modules.php`** (не `module_admin.php`). **API:** канонический **`/local/tools/as_onec_api.php`**, см. [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Переустановка:** в админке **Удалить** модуль → **Установить** снова; либо просто обновить файлы модуля — при смене версии в `install/version.php` выполнится синхронизация (снятие старых REST-обработчиков, права админов). Аварийно: **`force_install.php`** один раз, потом удалить с прода.
-- **Разработка:** правки в `local/modules/as.onecstock/` (`stock_import_engine.php`, `lib/http/jsonapikernel.php`, `lib/stock/stockreadservice.php`, `http_import_response.php`); импорт — отдельно от чтения. Проект целиком: корневой [`README.md`](../../../README.md).
+- **Разработка:** правки в `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/http/`, `lib/stock/`, `lib/price/`, `lib/product/`). Проект целиком: корневой [`README.md`](../../../README.md).
 - **Масштабирование:** лимиты в настройках модуля и `ONEC_STOCK_IMPORT_*`; при росте нагрузки — ресурсы PHP, батчи, при необходимости очередь перед endpoint.
 
 Репозиторий модуля: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).

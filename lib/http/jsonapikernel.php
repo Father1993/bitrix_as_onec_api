@@ -1,38 +1,58 @@
 <?php
 
-namespace As\Onecstock\Http;
+namespace As\OnecApi\Http;
 
-use As\Onecstock\Stock\StockReadService;
+use As\OnecApi\Price\PriceImportService;
+use As\OnecApi\Price\PriceReadService;
+use As\OnecApi\Product\ProductReadService;
+use As\OnecApi\Stock\StockEngineBootstrap;
+use As\OnecApi\Stock\StockReadService;
 
 /**
  * Версионируемый JSON API модуля (не rest-модуль Битрикса). Маршруты: PATH_INFO или query path=.
+ *
+ * Перед любым обработчиком маршрута вызывается {@see StockEngineBootstrap::ensureLoaded()} — подключается
+ * {@see include/stock_import_engine.php} (глобальные asStock*, авторизация импорта). Без этого шага нельзя
+ * вызывать {@see asStockApiAuthBySecretKey}, {@see asStockImportFrom1cRun} и сервисы, которые опираются на эти функции.
  */
 final class JsonApiKernel
 {
-    private const API_VERSION = '1';
+    /**
+     * @return list<array{0:string,1:string,2:callable}>
+     */
+    private function routes(): array
+    {
+        return [
+            ['GET', '/v1/stocks', [$this, 'handleGetStocks']],
+            ['POST', '/v1/stocks/import', [$this, 'handlePostStocksImport']],
+            ['POST', '/v1/stocks', [$this, 'handlePostStocksImport']],
+            ['GET', '/v1/prices', [$this, 'handleGetPrices']],
+            ['POST', '/v1/prices', [$this, 'handlePostPrices']],
+            ['GET', '/v1/products', [$this, 'handleGetProducts']],
+        ];
+    }
 
     public function dispatch(): void
     {
-        header('Content-Type: application/json; charset=UTF-8');
-
         $method = strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'));
         $path = $this->resolvePath();
 
-        if ($method === 'GET' && $this->pathMatches($path, '/v1/stocks')) {
-            $this->handleGetStocks();
+        foreach ($this->routes() as [$m, $p, $handler]) {
+            if ($m === $method && $this->pathMatches($path, $p)) {
+                StockEngineBootstrap::ensureLoaded();
+                $handler();
 
-            return;
+                return;
+            }
         }
 
-        http_response_code(404);
-        echo json_encode(
+        JsonResponse::send(
+            404,
             [
                 'ok' => false,
                 'error' => 'NOT_FOUND',
-                'message' => 'Неизвестный маршрут API. Используйте GET /v1/stocks с параметром xml_id (path в query или PATH_INFO).',
-                'api_version' => self::API_VERSION,
-            ],
-            JSON_UNESCAPED_UNICODE
+                'message' => 'Неизвестный маршрут API. См. документацию: GET/POST path=/v1/stocks, /v1/stocks/import, /v1/prices, /v1/products.',
+            ]
         );
     }
 
@@ -55,26 +75,30 @@ final class JsonApiKernel
 
         $raw = trim(str_replace('\\', '/', $raw), '/');
         if ($raw === '') {
-            return '/';
+            $path = '/';
+        } else {
+            $path = '/' . $raw;
         }
 
-        return '/' . $raw;
+        if (($path === '/' || $path === '') && defined('AS_ONEC_API_DEFAULT_PATH')) {
+            return (string) AS_ONEC_API_DEFAULT_PATH;
+        }
+
+        return $path === '' ? '/' : $path;
     }
 
     private function handleGetStocks(): void
     {
         $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
-        $auth = asStockApiAuthBySecretKey($queryKey);
+        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
         if (!$auth['ok']) {
-            http_response_code(401);
-            echo json_encode(
+            JsonResponse::send(
+                401,
                 [
                     'ok' => false,
                     'error' => 'UNAUTHORIZED',
                     'message' => $auth['message'] ?? 'Требуется авторизация.',
-                    'api_version' => self::API_VERSION,
-                ],
-                JSON_UNESCAPED_UNICODE
+                ]
             );
 
             return;
@@ -82,7 +106,62 @@ final class JsonApiKernel
 
         $xmlId = isset($_GET['xml_id']) ? (string) $_GET['xml_id'] : '';
         $result = StockReadService::queryByXmlId($xmlId);
-        http_response_code($result['http_code']);
-        echo json_encode($result['data'], JSON_UNESCAPED_UNICODE);
+        JsonResponse::send($result['http_code'], $result['data']);
+    }
+
+    private function handlePostStocksImport(): void
+    {
+        $result = asStockImportFrom1cRun();
+        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+    }
+
+    private function handleGetPrices(): void
+    {
+        $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
+        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
+        if (!$auth['ok']) {
+            JsonResponse::send(
+                401,
+                [
+                    'ok' => false,
+                    'error' => 'UNAUTHORIZED',
+                    'message' => $auth['message'] ?? 'Требуется авторизация.',
+                ]
+            );
+
+            return;
+        }
+
+        $xmlId = isset($_GET['xml_id']) ? (string) $_GET['xml_id'] : '';
+        $result = PriceReadService::queryByXmlId($xmlId);
+        JsonResponse::send($result['http_code'], $result['data']);
+    }
+
+    private function handlePostPrices(): void
+    {
+        $result = PriceImportService::run();
+        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+    }
+
+    private function handleGetProducts(): void
+    {
+        $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
+        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
+        if (!$auth['ok']) {
+            JsonResponse::send(
+                401,
+                [
+                    'ok' => false,
+                    'error' => 'UNAUTHORIZED',
+                    'message' => $auth['message'] ?? 'Требуется авторизация.',
+                ]
+            );
+
+            return;
+        }
+
+        $xmlId = isset($_GET['xml_id']) ? (string) $_GET['xml_id'] : '';
+        $result = ProductReadService::queryByXmlId($xmlId);
+        JsonResponse::send($result['http_code'], $result['data']);
     }
 }

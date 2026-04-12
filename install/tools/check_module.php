@@ -13,7 +13,7 @@ if (!defined('AS_ONECSTOCK_DIAG_URL') || AS_ONECSTOCK_DIAG_URL !== true) {
 
 \Bitrix\Main\Loader::includeModule('main');
 
-$mid = 'as.onecstock';
+$mid = 'as.onec_api';
 
 echo "<h1>Проверка модуля {$mid}</h1>";
 

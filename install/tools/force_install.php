@@ -1,10 +1,10 @@
 <?php
 
 /**
- * Аварийная установка модуля as.onecstock из браузера, если кнопка на partner_modules.php «молчит».
+ * Аварийная установка модуля as.onec_api из браузера, если кнопка на partner_modules.php «молчит».
  *
  * Откройте в браузере (будучи залогиненным администратором):
- * /local/modules/as.onecstock/install/tools/force_install.php
+ * /local/modules/as.onec_api/install/tools/force_install.php
  *
  * После успешной установки УДАЛИТЕ этот файл с продакшена (либо весь каталог install/tools/).
  */
@@ -25,7 +25,7 @@ if (!is_object($USER) || !$USER->IsAdmin()) {
 
 \Bitrix\Main\Loader::includeModule('main');
 
-$mid = 'as.onecstock';
+$mid = 'as.onec_api';
 
 if (\Bitrix\Main\ModuleManager::isModuleInstalled($mid)) {
     LocalRedirect('/bitrix/admin/partner_modules.php?lang=' . LANGUAGE_ID . '&mod=' . rawurlencode($mid) . '&result=OK');

@@ -1,17 +1,17 @@
 <?php
 
-namespace As\OnecApi\Stock;
+namespace As\OnecApi\Price;
 
-use Bitrix\Catalog\Config\State;
+use As\OnecApi\Stock\StockEngineBootstrap;
+use Bitrix\Catalog\GroupTable;
+use Bitrix\Catalog\PriceTable;
 use Bitrix\Catalog\ProductTable;
-use Bitrix\Catalog\StoreProductTable;
-use Bitrix\Catalog\StoreTable;
 use Bitrix\Main\Loader;
 
 /**
- * Чтение остатков по XML_ID элемента каталога/ТП (та же логика поиска, что у импорта).
+ * Чтение цен по XML_ID элемента каталога/ТП.
  */
-final class StockReadService
+final class PriceReadService
 {
     private const API_VERSION = '1';
 
@@ -64,7 +64,7 @@ final class StockReadService
 
         $productRow = ProductTable::getList([
             'filter' => ['=ID' => $elementId],
-            'select' => ['ID', 'QUANTITY'],
+            'select' => ['ID'],
             'limit' => 1,
         ])->fetch();
 
@@ -82,67 +82,57 @@ final class StockReadService
             ];
         }
 
-        $useStores = State::isUsedInventoryManagement();
-        $payload = [
-            'ok' => true,
-            'api_version' => self::API_VERSION,
-            'product_xml_id' => $xmlId,
-            'element_id' => $elementId,
-            'use_store_control' => $useStores,
-            'inventory_management' => $useStores,
-        ];
+        $priceRows = [];
+        $rs = PriceTable::getList([
+            'filter' => ['=PRODUCT_ID' => $elementId],
+            'select' => ['ID', 'CATALOG_GROUP_ID', 'PRICE', 'CURRENCY', 'QUANTITY_FROM', 'QUANTITY_TO'],
+        ]);
+        while ($row = $rs->fetch()) {
+            $priceRows[] = $row;
+        }
 
-        if ($useStores) {
-            $storeRows = [];
-            $rs = StoreProductTable::getList([
-                'filter' => ['=PRODUCT_ID' => $elementId],
-                'select' => ['STORE_ID', 'AMOUNT'],
+        $groupIds = array_values(array_unique(array_filter(array_map(
+            static fn ($r) => (int) ($r['CATALOG_GROUP_ID'] ?? 0),
+            $priceRows
+        ))));
+
+        $groupMap = [];
+        if ($groupIds !== []) {
+            $gr = GroupTable::getList([
+                'filter' => ['@ID' => $groupIds],
+                'select' => ['ID', 'NAME', 'BASE'],
             ]);
-            while ($row = $rs->fetch()) {
-                $storeRows[] = [
-                    'store_id' => (int) $row['STORE_ID'],
-                    'amount' => (float) $row['AMOUNT'],
-                ];
+            while ($g = $gr->fetch()) {
+                $groupMap[(int) $g['ID']] = $g;
             }
+        }
 
-            $storeIds = array_values(array_unique(array_column($storeRows, 'store_id')));
-            $storeMap = [];
-            if ($storeIds !== []) {
-                $sr = StoreTable::getList([
-                    'filter' => ['@ID' => $storeIds],
-                    'select' => ['ID', 'TITLE', 'XML_ID', 'CODE', 'ACTIVE'],
-                ]);
-                while ($s = $sr->fetch()) {
-                    $storeMap[(int) $s['ID']] = $s;
-                }
-            }
-
-            $stores = [];
-            $total = 0.0;
-            foreach ($storeRows as $sp) {
-                $sid = $sp['store_id'];
-                $info = $storeMap[$sid] ?? null;
-                $amt = $sp['amount'];
-                $total += $amt;
-                $stores[] = [
-                    'store_id' => $sid,
-                    'amount' => $amt,
-                    'store_xml_id' => $info ? (string) $info['XML_ID'] : '',
-                    'store_code' => $info ? (string) $info['CODE'] : '',
-                    'title' => $info ? (string) $info['TITLE'] : '',
-                    'active' => $info ? ($info['ACTIVE'] === 'Y') : false,
-                ];
-            }
-
-            $payload['stores'] = $stores;
-            $payload['quantity_total'] = $total;
-        } else {
-            $payload['quantity'] = (float) $productRow['QUANTITY'];
+        $prices = [];
+        foreach ($priceRows as $row) {
+            $gid = (int) $row['CATALOG_GROUP_ID'];
+            $info = $groupMap[$gid] ?? null;
+            $prices[] = [
+                'price_id' => (int) $row['ID'],
+                'catalog_group_id' => $gid,
+                'price_type_name' => $info ? (string) $info['NAME'] : '',
+                'price_type_xml_id' => '',
+                'base' => $info ? ($info['BASE'] === 'Y') : false,
+                'price' => (float) $row['PRICE'],
+                'currency' => (string) $row['CURRENCY'],
+                'quantity_from' => isset($row['QUANTITY_FROM']) ? (float) $row['QUANTITY_FROM'] : null,
+                'quantity_to' => isset($row['QUANTITY_TO']) ? (float) $row['QUANTITY_TO'] : null,
+            ];
         }
 
         return [
             'http_code' => 200,
-            'data' => $payload,
+            'data' => [
+                'ok' => true,
+                'api_version' => self::API_VERSION,
+                'product_xml_id' => $xmlId,
+                'element_id' => $elementId,
+                'prices' => $prices,
+            ],
         ];
     }
 }
