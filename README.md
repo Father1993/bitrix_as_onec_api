@@ -62,11 +62,30 @@ This module is deployed as files under `local/modules/as.onecstock/` (not necess
 
 ## Troubleshooting
 
-### “Install does nothing” on partner_modules.php
+### Why `module_admin.php` never lists this module (by design)
 
-1. Confirm **`PARTNER_NAME`** and **`PARTNER_URI`** are set in `install/index.php` (this repo includes them).
-2. Check **`b_module`** (below): if the row exists with `INSTALLED = Y`, the UI may still show an old state until refresh; clear cache (**Настройки → Производительность → Очистить кеш**).
-3. Check the **PHP error log** on click — a fatal error can abort the request before redirect.
+`ModuleManager::getModulesFromDisk()` filters folders by whether the module ID contains a **dot**:
+
+- **`/bitrix/admin/module_admin.php`** calls `getModulesFromDisk(true, false)` — **only modules whose folder name has no dot** (e.g. `main`, `iblock`).
+- **`/bitrix/admin/partner_modules.php`** calls `getModulesFromDisk(true, true, false)` — **only modules whose folder name contains a dot** (partner-style ID), e.g. `as.onecstock`.
+
+So **`as.onecstock` will not appear on `module_admin.php`**. This is not a bug. Install only from **`partner_modules.php`** (or rename the module to an ID without a dot if you need the other screen — breaking change).
+
+### “Install does nothing” on `partner_modules.php` (silent)
+
+Core file `bitrix/modules/main/admin/partner_modules.php` only runs install when **all** of these hold: `install=Y` in the request, user can **`edit_other_settings`**, and **`check_bitrix_sessid()`** succeeds. If the session string is wrong or expired, **the install block is skipped with no error message** (page just renders the list again).
+
+**Fix:**
+
+1. Open **`partner_modules.php`** fresh, log in as admin.
+2. Click **Install** from the **action menu in the table** (do not reuse an old bookmarked URL with `sessid=`).
+3. After a successful install the browser should redirect to a URL containing **`result=OK`** and **`mod=as.onecstock`**.
+
+If it still does nothing:
+
+4. Confirm **`PARTNER_NAME`** / **`PARTNER_URI`** in `install/index.php` (included in this repo).
+5. If **`CModule::CreateModuleObject('as.onecstock')`** fails (broken `install/index.php`), the core also skips install **silently** — check **PHP error log** and run `php -l` on `install/index.php`.
+6. Check **`b_module`** (below) and clear **cache**.
 
 ### Module already installed or stuck state
 
@@ -98,4 +117,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Русский:** модуль с ID **`as.onecstock`** (есть **точка**) — **партнёрский** для Битрикс: смотрите и ставьте с **`/bitrix/admin/partner_modules.php`**, на **`module_admin.php`** его часто **нет** — это нормально. REST: `as.stock.import`. Исходный код: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock). Путь: `local/modules/as.onecstock`.
+**Русский:** ID **`as.onecstock`** содержит **точку** — ядро показывает такой модуль **только** на **`partner_modules.php`**, а **`module_admin.php`** специально **отфильтровывает** все модули с точкой в имени папки — это **не ошибка**. Установка: кнопка **Установить** в списке на `partner_modules.php` (не старый URL с `sessid` — иначе установка **молча не выполнится**). REST: `as.stock.import`. Код: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock). Путь: `local/modules/as.onecstock`.
