@@ -4,6 +4,7 @@ namespace As\Onecstock;
 
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\EventManager;
+use Bitrix\Main\GroupTable;
 use Bitrix\Main\ModuleManager;
 
 final class Installer
@@ -58,8 +59,21 @@ final class Installer
             return;
         }
         self::syncRestEvents();
-        if (ModuleManager::isModuleInstalled('rest')) {
-            Option::set(self::MODULE_ID, 'install_script_version', $ver);
+        self::grantAdminGroupsWriteAccess();
+        Option::set(self::MODULE_ID, 'install_script_version', $ver);
+    }
+
+    /** Права W для групп с ADMIN=Y — при установке и при смене версии модуля (обновление без переустановки). */
+    public static function grantAdminGroupsWriteAccess(): void
+    {
+        global $APPLICATION;
+
+        $result = GroupTable::getList([
+            'filter' => ['=ADMIN' => 'Y', '=ACTIVE' => 'Y'],
+            'select' => ['ID'],
+        ]);
+        while ($row = $result->fetch()) {
+            $APPLICATION->SetGroupRight(self::MODULE_ID, (int) $row['ID'], 'W');
         }
     }
 }
