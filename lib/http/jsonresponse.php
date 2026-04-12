@@ -33,4 +33,22 @@ final class JsonResponse
 
         return $data;
     }
+
+    /**
+     * Ограничение размера тела для импортов (остатки, цены): единый контракт с ImportService / PriceImportService.
+     *
+     * @return array{http_code:int, data:array<string, mixed>}
+     */
+    public static function payloadTooLarge(int $maxBodyBytes): array
+    {
+        return [
+            'http_code' => 413,
+            'data' => [
+                'ok' => false,
+                'error' => 'PAYLOAD_TOO_LARGE',
+                'message' => 'Превышен размер тела запроса.',
+                'max_bytes' => $maxBodyBytes,
+            ],
+        ];
+    }
 }

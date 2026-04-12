@@ -35,7 +35,7 @@ flowchart LR
 | Чтение остатков / цен / товара | [lib/stock/stockreadservice.php](lib/stock/stockreadservice.php), [lib/price/pricereadservice.php](lib/price/pricereadservice.php), [lib/product/productreadservice.php](lib/product/productreadservice.php) |
 | Лимиты и опции модуля | [lib/stockimportoptions.php](lib/stockimportoptions.php), [options.php](options.php) |
 | Установка / синхрон версии | [install/index.php](install/index.php), [lib/installer.php](lib/installer.php) |
-| Единый JSON-ответ | [lib/http/jsonresponse.php](lib/http/jsonresponse.php) (`api_version`) |
+| Единый JSON-ответ, общий 413 для импортов | [lib/http/jsonresponse.php](lib/http/jsonresponse.php) (`send`, `withApiVersion`, `payloadTooLarge`) |
 
 ## Правило ленивой загрузки
 
