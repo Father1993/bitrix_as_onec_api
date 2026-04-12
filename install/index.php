@@ -44,6 +44,8 @@ class as_onec_api extends CModule
             return false;
         }
 
+        require_once dirname(__DIR__) . '/lib/installer.php';
+
         try {
             ModuleManager::registerModule($this->MODULE_ID);
             Installer::migrateOptionsFromLegacyStockModule();

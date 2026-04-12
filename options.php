@@ -90,9 +90,7 @@ if ($request->isPost() && $canWrite) {
     $isUpdate = $request->getPost('Update') !== null;
 
     if ($isRestore || $isUpdate) {
-        if (!check_bitrix_sessid()) {
-            CAdminMessage::ShowMessage(['MESSAGE' => Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_SESSID'), 'TYPE' => 'ERROR']);
-        } elseif ($isRestore) {
+        if ($isRestore) {
             foreach (['max_items', 'batch_size', 'max_body_bytes', 'default_store_id'] as $name) {
                 Option::delete($moduleId, ['name' => $name]);
             }
@@ -140,7 +138,6 @@ $aTabs = [
 $tabControl = new CAdminTabControl('tabControl', $aTabs);
 ?>
 <form method="post" action="<?= htmlspecialcharsbx($formAction) ?>">
-    <?= bitrix_sessid_post() ?>
     <?php
     $tabControl->Begin();
     $tabControl->BeginNextTab();

@@ -100,7 +100,7 @@ final class PriceReadService
         if ($groupIds !== []) {
             $gr = GroupTable::getList([
                 'filter' => ['@ID' => $groupIds],
-                'select' => ['ID', 'NAME', 'BASE'],
+                'select' => ['ID', 'NAME', 'BASE', 'XML_ID'],
             ]);
             while ($g = $gr->fetch()) {
                 $groupMap[(int) $g['ID']] = $g;
@@ -115,7 +115,7 @@ final class PriceReadService
                 'price_id' => (int) $row['ID'],
                 'catalog_group_id' => $gid,
                 'price_type_name' => $info ? (string) $info['NAME'] : '',
-                'price_type_xml_id' => '',
+                'price_type_xml_id' => $info ? (string) ($info['XML_ID'] ?? '') : '',
                 'base' => $info ? ($info['BASE'] === 'Y') : false,
                 'price' => (float) $row['PRICE'],
                 'currency' => (string) $row['CURRENCY'],
