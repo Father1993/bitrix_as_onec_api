@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Father1993%2Fbitrix__as__onec__api-181717?logo=github)](https://github.com/Father1993/bitrix_as_onec_api)
 
-**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/http/jsonapikernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
+**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/Http/JsonApiKernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
 
 **Source code:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api) — canonical repository for this module (`MODULE_ID` **`as.onec_api`**).  
 **Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).  
@@ -26,9 +26,9 @@
 
 | Тема | Суть |
 |------|------|
-| Точка входа HTTP | Один скрипт `local/tools/as_onec_api.php`, маршруты `path=` / `PATH_INFO`, роутер [`JsonApiKernel`](lib/http/jsonapikernel.php). |
-| Ленивый движок | [`StockEngineBootstrap::ensureLoaded()`](lib/stock/stockenginebootstrap.php) вызывается в сервисах **после** `Loader::includeModule('catalog'/'iblock')`. [`include.php`](include.php) не подключает `stock_import_engine.php` при каждом `includeModule`. |
-| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/stock/importservice.php). |
+| Точка входа HTTP | Один скрипт `local/tools/as_onec_api.php`, маршруты `path=` / `PATH_INFO`, роутер [`JsonApiKernel`](lib/Http/JsonApiKernel.php). |
+| Ленивый движок | [`StockEngineBootstrap::ensureLoaded()`](lib/Stock/StockEngineBootstrap.php) вызывается в сервисах **после** `Loader::includeModule('catalog'/'iblock')`. [`include.php`](include.php) не подключает `stock_import_engine.php` при каждом `includeModule`. |
+| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/Stock/ImportService.php). |
 | Breaking 1.1.3 | Удалены `local/tools/as_onecstock_*.php`; только POST: [`public/http_import.php`](public/http_import.php). |
 | Лимиты | `b_option` модуля (настройки админки) + fallback `ONEC_STOCK_IMPORT_*` в `php_interface`. |
 
@@ -51,15 +51,20 @@
 
 ### Канонический URL
 
-- **`/local/tools/as_onec_api.php`** — единая точка входа: маршрут **`path`** (query) или `PATH_INFO`. Роутер: [`As\OnecApi\Http\JsonApiKernel`](lib/http/jsonapikernel.php).
+- **`/local/tools/as_onec_api.php`** — единая точка входа: маршрут **`path`** (query) или `PATH_INFO`. Роутер: [`As\OnecApi\Http\JsonApiKernel`](lib/Http/JsonApiKernel.php).
 
 | Метод | path | Описание |
 |--------|------|----------|
-| GET | `/v1/stocks` | Остатки по `xml_id` |
+| GET | `/v1/stocks` | Остатки по `xml_id` (см. поля ответа ниже) |
 | POST | `/v1/stocks/import`, `/v1/stocks` | Импорт остатков |
 | GET | `/v1/prices` | Цены по `xml_id` |
 | POST | `/v1/prices` | Импорт цен (`items`: `product_xml_id`, `catalog_group_id`, `price`, `currency`) |
 | GET | `/v1/products` | Элемент ИБ + `ProductTable` по `xml_id` |
+
+**GET `/v1/stocks` — поля JSON:**
+
+- **`inventory_management: false`:** **`quantity`** — значение `ProductTable.QUANTITY`.
+- **`inventory_management: true`:** **`stores`** (остатки по `b_catalog_store_product`), **`quantity_total`** — сумма `stores[].amount`; **`catalog_quantity`** — `ProductTable.QUANTITY` (часто совпадает с «Остаток» в карточке ТП). Пока по товару нет строк складов, `quantity_total` может быть `0`, а `catalog_quantity` — ненулевым; для сверки с витриной используйте **`catalog_quantity`**, для склада — **`stores` / `quantity_total`**.
 
 - **`/local/modules/as.onec_api/public/http_import.php`** — альтернатива: только POST импорт остатков (внутри выставляет `path=/v1/stocks/import`).
 - **`public/http_stocks_import.php`** — после чужого `prolog`; по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.
@@ -193,4 +198,4 @@ MIT — see [LICENSE](LICENSE).
 - **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`** — файл в `local/tools/` **не создаётся** установкой модуля; эталон лежит в репозитории: **`local/modules/as.onec_api/tools/as_onec_api.php`** (скопировать в `local/tools/` вручную). **Настройки модуля:** сохранение при праве **W** на `as.onec_api`, **без** `check_bitrix_sessid()` в форме (см. раздел *Module settings* выше). Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Репозиторий:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api).
 - **Переустановка:** Удалить модуль → Установить; или обновить файлы — при смене версии в `install/version.php` выполнится `syncIfNewVersion()`. Аварийно: **`force_install.php`** один раз, затем удалить с прода.
-- **Разработка:** `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/http/`, `lib/stock/`, `lib/price/`, `lib/product/`). Общий обзор проекта: корневой [`README.md`](../../../README.md).
+- **Разработка:** `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/Http/`, `lib/Stock/`, `lib/Price/`, `lib/Product/`). Общий обзор проекта: корневой [`README.md`](../../../README.md).

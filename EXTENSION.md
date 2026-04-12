@@ -20,23 +20,24 @@ flowchart LR
 ```
 
 - Рабочая точка входа веб-сервера: `local/tools/as_onec_api.php` ([относительно корня сайта](../../tools/as_onec_api.php)). Установка модуля в админке **не** копирует этот файл — эталон в репозитории: [tools/as_onec_api.php](tools/as_onec_api.php) (скопировать в `local/tools/`).
-- После prolog: [include/api_http_bootstrap.php](include/api_http_bootstrap.php) — `Loader::includeModule('as.onec_api')`, создание [JsonApiKernel](lib/http/jsonapikernel.php).
-- Процедурный движок [include/stock_import_engine.php](include/stock_import_engine.php) **не** подключается из [include.php](include.php); его подгружает [StockEngineBootstrap](lib/stock/stockenginebootstrap.php) после подключения `catalog` / `iblock`.
+- После prolog: [include/api_http_bootstrap.php](include/api_http_bootstrap.php) — `Loader::includeModule('as.onec_api')`, создание [JsonApiKernel](lib/Http/JsonApiKernel.php).
+- Процедурный движок [include/stock_import_engine.php](include/stock_import_engine.php) **не** подключается из [include.php](include.php); его подгружает [StockEngineBootstrap](lib/Stock/StockEngineBootstrap.php) после подключения `catalog` / `iblock`.
+- [include.php](include.php) регистрирует **явный PSR-4** для `As\OnecApi\` (в дополнение к `.settings.php`), чтобы классы находились сразу после установки модуля и на Linux с регистрозависимыми путями.
 
 ## Куда править
 
 | Задача | Файл(ы) |
 |--------|---------|
 | Скрипт точки входа `local/tools/` | Эталон в репозитории: [tools/as_onec_api.php](tools/as_onec_api.php) — на сайт копируется вручную, не через Install |
-| Новый HTTP-маршрут | [lib/http/jsonapikernel.php](lib/http/jsonapikernel.php) — `routes()` и обработчик |
-| Авторизация GET / query | [lib/http/apikeyguard.php](lib/http/apikeyguard.php); функции в [include/stock_import_engine.php](include/stock_import_engine.php) (`asStockApiAuthBySecretKey`, `asStockImportFrom1cAuth`) |
-| Общий preflight чтения по `xml_id` | [lib/catalog/catalogreadpreflight.php](lib/catalog/catalogreadpreflight.php) — `CatalogReadPreflight` |
-| Импорт остатков (строки, склады, ORM) | [include/stock_import_engine.php](include/stock_import_engine.php); обёртка [lib/stock/importservice.php](lib/stock/importservice.php) |
-| Импорт цен | [lib/price/priceimportservice.php](lib/price/priceimportservice.php) |
-| Чтение остатков / цен / товара | [lib/stock/stockreadservice.php](lib/stock/stockreadservice.php), [lib/price/pricereadservice.php](lib/price/pricereadservice.php), [lib/product/productreadservice.php](lib/product/productreadservice.php) |
-| Лимиты и опции модуля | [lib/stockimportoptions.php](lib/stockimportoptions.php), [options.php](options.php) |
-| Установка / синхрон версии | [install/index.php](install/index.php), [lib/installer.php](lib/installer.php) |
-| Единый JSON-ответ, общий 413 для импортов | [lib/http/jsonresponse.php](lib/http/jsonresponse.php) (`send`, `withApiVersion`, `payloadTooLarge`) |
+| Новый HTTP-маршрут | [lib/Http/JsonApiKernel.php](lib/Http/JsonApiKernel.php) — `routes()` и обработчик |
+| Авторизация GET / query | [lib/Http/ApiKeyGuard.php](lib/Http/ApiKeyGuard.php); функции в [include/stock_import_engine.php](include/stock_import_engine.php) (`asStockApiAuthBySecretKey`, `asStockImportFrom1cAuth`) |
+| Общий preflight чтения по `xml_id` | [lib/Catalog/CatalogReadPreflight.php](lib/Catalog/CatalogReadPreflight.php) — `CatalogReadPreflight` |
+| Импорт остатков (строки, склады, ORM) | [include/stock_import_engine.php](include/stock_import_engine.php); обёртка [lib/Stock/ImportService.php](lib/Stock/ImportService.php) |
+| Импорт цен | [lib/Price/PriceImportService.php](lib/Price/PriceImportService.php) |
+| Чтение остатков / цен / товара | [lib/Stock/StockReadService.php](lib/Stock/StockReadService.php), [lib/Price/PriceReadService.php](lib/Price/PriceReadService.php), [lib/Product/ProductReadService.php](lib/Product/ProductReadService.php) |
+| Лимиты и опции модуля | [lib/StockImportOptions.php](lib/StockImportOptions.php), [options.php](options.php) |
+| Установка / синхрон версии | [install/index.php](install/index.php), [lib/Installer.php](lib/Installer.php) |
+| Единый JSON-ответ, общий 413 для импортов | [lib/Http/JsonResponse.php](lib/Http/JsonResponse.php) (`send`, `withApiVersion`, `payloadTooLarge`) |
 
 ## Правило ленивой загрузки
 
@@ -45,13 +46,13 @@ flowchart LR
 1. Выполнить `Loader::includeModule('catalog')` и `Loader::includeModule('iblock')` (или эквивалентную проверку).
 2. Вызвать `StockEngineBootstrap::ensureLoaded()`.
 
-Так сделано в guard, read/import сервисах и в [CatalogReadPreflight](lib/catalog/catalogreadpreflight.php).
+Так сделано в guard, read/import сервисах и в [CatalogReadPreflight](lib/Catalog/CatalogReadPreflight.php).
 
 ## D7 ORM (ориентир)
 
 Используются среди прочего: `ElementTable`, `PropertyTable`, `PropertyEnumerationTable`, `ProductTable`, `StoreTable`, `StoreProductTable`, `PriceTable`, `GroupTable`. Старый API каталога (`CIBlockElement::GetList` и т.п.) в модуле не используется для этих сценариев.
 
-Исключение по ядру: после батча остатков при складском учёте может вызываться `\CCatalogStore::recalculateProductsBalances()` (см. комментарий `@todo` в [ImportService](lib/stock/importservice.php)).
+Исключение по ядру: после батча остатков при складском учёте может вызываться `\CCatalogStore::recalculateProductsBalances()` (см. комментарий `@todo` в [ImportService](lib/Stock/ImportService.php)).
 
 ## Ограничения проекта
 
