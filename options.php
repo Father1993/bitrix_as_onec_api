@@ -1,5 +1,13 @@
 <?php
 
+/**
+ * Настройки модуля для bitrix/admin/settings.php.
+ *
+ * Важно: при подключении из settings.php файл модуля выполняется ДО объявления в settings.php
+ * функций __AdmSettingsDrawList / __AdmSettingsSaveOptions (см. ядро main/admin/settings.php),
+ * поэтому вызывать их из options.php нельзя. Описание полей оформлено массивом по аналогии с gist/докой Bitrix.
+ */
+
 defined('B_PROLOG_INCLUDED') || die();
 
 use Bitrix\Main\Config\Option;
@@ -31,6 +39,50 @@ $formAction = $APPLICATION->GetCurPageParam(
     ['mid', 'lang']
 );
 
+/** @var list<array{id: string, label: string, size: int}> */
+$arTextOptions = [
+    ['id' => 'max_items', 'label' => Loc::getMessage('AS_ONECSTOCK_OPTIONS_MAX_ITEMS'), 'size' => 12],
+    ['id' => 'batch_size', 'label' => Loc::getMessage('AS_ONECSTOCK_OPTIONS_BATCH_SIZE'), 'size' => 12],
+    ['id' => 'max_body_bytes', 'label' => Loc::getMessage('AS_ONECSTOCK_OPTIONS_MAX_BODY_BYTES'), 'size' => 12],
+    ['id' => 'default_store_id', 'label' => Loc::getMessage('AS_ONECSTOCK_OPTIONS_DEFAULT_STORE_ID'), 'size' => 12],
+];
+
+$validatePosted = static function (array $posted): ?string {
+    $maxItems = $posted['max_items'] ?? '';
+    $batchSize = $posted['batch_size'] ?? '';
+    $maxBody = $posted['max_body_bytes'] ?? '';
+    $defStore = $posted['default_store_id'] ?? '';
+
+    if ($maxItems !== '' && (!ctype_digit($maxItems) || (int) $maxItems < 1)) {
+        return Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_MAX_ITEMS');
+    }
+    if ($batchSize !== '' && (!ctype_digit($batchSize) || (int) $batchSize < 1)) {
+        return Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_BATCH_SIZE');
+    }
+    if ($maxBody !== '' && (!ctype_digit($maxBody) || (int) $maxBody < 1024)) {
+        return Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_MAX_BODY_BYTES');
+    }
+    if ($defStore !== '' && (!ctype_digit($defStore) || (int) $defStore < 0)) {
+        return Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_DEFAULT_STORE_ID');
+    }
+
+    return null;
+};
+
+$normalizeForSave = static function (array $posted): array {
+    $maxItems = trim((string) ($posted['max_items'] ?? ''));
+    $batchSize = trim((string) ($posted['batch_size'] ?? ''));
+    $maxBody = trim((string) ($posted['max_body_bytes'] ?? ''));
+    $defStore = trim((string) ($posted['default_store_id'] ?? ''));
+
+    return [
+        'max_items' => $maxItems === '' ? '' : (string) max(1, (int) $maxItems),
+        'batch_size' => $batchSize === '' ? '' : (string) max(1, (int) $batchSize),
+        'max_body_bytes' => $maxBody === '' ? '' : (string) max(1024, (int) $maxBody),
+        'default_store_id' => $defStore === '' ? '' : (string) max(0, (int) $defStore),
+    ];
+};
+
 $stickyValuesAfterError = false;
 
 if ($request->isPost() && $canWrite) {
@@ -46,46 +98,34 @@ if ($request->isPost() && $canWrite) {
             }
             CAdminMessage::ShowNote(Loc::getMessage('AS_ONECSTOCK_OPTIONS_SAVED'));
         } elseif ($isUpdate) {
-            $maxItems = trim((string) $request->getPost('max_items'));
-            $batchSize = trim((string) $request->getPost('batch_size'));
-            $maxBody = trim((string) $request->getPost('max_body_bytes'));
-            $defStore = trim((string) $request->getPost('default_store_id'));
-
-            $err = null;
-            if ($maxItems !== '' && (!ctype_digit($maxItems) || (int) $maxItems < 1)) {
-                $err = Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_MAX_ITEMS');
-            } elseif ($batchSize !== '' && (!ctype_digit($batchSize) || (int) $batchSize < 1)) {
-                $err = Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_BATCH_SIZE');
-            } elseif ($maxBody !== '' && (!ctype_digit($maxBody) || (int) $maxBody < 1024)) {
-                $err = Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_MAX_BODY_BYTES');
-            } elseif ($defStore !== '' && (!ctype_digit($defStore) || (int) $defStore < 0)) {
-                $err = Loc::getMessage('AS_ONECSTOCK_OPTIONS_ERR_DEFAULT_STORE_ID');
+            $posted = [];
+            foreach ($arTextOptions as $opt) {
+                $posted[$opt['id']] = trim((string) $request->getPost($opt['id']));
             }
 
+            $err = $validatePosted($posted);
             if ($err !== null) {
                 CAdminMessage::ShowMessage(['MESSAGE' => $err, 'TYPE' => 'ERROR']);
                 $stickyValuesAfterError = true;
             } else {
-                Option::set($moduleId, 'max_items', $maxItems === '' ? '' : (string) max(1, (int) $maxItems));
-                Option::set($moduleId, 'batch_size', $batchSize === '' ? '' : (string) max(1, (int) $batchSize));
-                Option::set($moduleId, 'max_body_bytes', $maxBody === '' ? '' : (string) max(1024, (int) $maxBody));
-                Option::set($moduleId, 'default_store_id', $defStore === '' ? '' : (string) max(0, (int) $defStore));
+                foreach ($normalizeForSave($posted) as $name => $value) {
+                    Option::set($moduleId, $name, $value);
+                }
                 CAdminMessage::ShowNote(Loc::getMessage('AS_ONECSTOCK_OPTIONS_SAVED'));
             }
         }
     }
 }
 
-$maxItems = Option::get($moduleId, 'max_items', '');
-$batchSize = Option::get($moduleId, 'batch_size', '');
-$maxBodyBytes = Option::get($moduleId, 'max_body_bytes', '');
-$defaultStoreId = Option::get($moduleId, 'default_store_id', '');
+$values = [];
+foreach ($arTextOptions as $opt) {
+    $values[$opt['id']] = Option::get($moduleId, $opt['id'], '');
+}
 
 if ($stickyValuesAfterError) {
-    $maxItems = trim((string) $request->getPost('max_items'));
-    $batchSize = trim((string) $request->getPost('batch_size'));
-    $maxBodyBytes = trim((string) $request->getPost('max_body_bytes'));
-    $defaultStoreId = trim((string) $request->getPost('default_store_id'));
+    foreach ($arTextOptions as $opt) {
+        $values[$opt['id']] = trim((string) $request->getPost($opt['id']));
+    }
 }
 
 $aTabs = [
@@ -98,40 +138,24 @@ $aTabs = [
 ];
 
 $tabControl = new CAdminTabControl('tabControl', $aTabs);
-$tabControl->Begin();
 ?>
 <form method="post" action="<?= htmlspecialcharsbx($formAction) ?>">
     <?= bitrix_sessid_post() ?>
     <?php
+    $tabControl->Begin();
     $tabControl->BeginNextTab();
     ?>
     <tr>
         <td colspan="2"><?= Loc::getMessage('AS_ONECSTOCK_OPTIONS_HINT_EMPTY') ?></td>
     </tr>
+    <?php foreach ($arTextOptions as $opt) { ?>
     <tr>
-        <td width="40%"><?= Loc::getMessage('AS_ONECSTOCK_OPTIONS_MAX_ITEMS') ?>:</td>
-        <td width="60%"><input type="text" size="12" name="max_items" value="<?= htmlspecialcharsbx(
-            $maxItems
-        ) ?>"></td>
+        <td width="40%"><?= htmlspecialcharsbx($opt['label']) ?>:</td>
+        <td width="60%"><input type="text" size="<?= (int) $opt['size'] ?>" name="<?= htmlspecialcharsbx(
+            $opt['id']
+        ) ?>" value="<?= htmlspecialcharsbx($values[$opt['id']]) ?>"></td>
     </tr>
-    <tr>
-        <td><?= Loc::getMessage('AS_ONECSTOCK_OPTIONS_BATCH_SIZE') ?>:</td>
-        <td><input type="text" size="12" name="batch_size" value="<?= htmlspecialcharsbx(
-            $batchSize
-        ) ?>"></td>
-    </tr>
-    <tr>
-        <td><?= Loc::getMessage('AS_ONECSTOCK_OPTIONS_MAX_BODY_BYTES') ?>:</td>
-        <td><input type="text" size="12" name="max_body_bytes" value="<?= htmlspecialcharsbx(
-            $maxBodyBytes
-        ) ?>"></td>
-    </tr>
-    <tr>
-        <td><?= Loc::getMessage('AS_ONECSTOCK_OPTIONS_DEFAULT_STORE_ID') ?>:</td>
-        <td><input type="text" size="12" name="default_store_id" value="<?= htmlspecialcharsbx(
-            $defaultStoreId
-        ) ?>"></td>
-    </tr>
+    <?php } ?>
     <?php
     $tabControl->EndTab();
     $tabControl->Buttons();

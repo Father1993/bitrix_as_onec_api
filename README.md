@@ -3,14 +3,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Father1993%2Fbitrix--as--onecstock-181717?logo=github)](https://github.com/Father1993/bitrix-as-onecstock)
 
-**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes a **REST webhook** and optional HTTP entry point to **import catalog stock** from **1C** (or any client posting JSON). Uses catalog / iblock APIs and supports store mapping (including list-property based warehouse codes).
+**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes an **HTTP POST (JSON)** endpoint to **import catalog stock** from **1C** (or any client posting JSON). Uses catalog / iblock APIs and supports store mapping (including list-property based warehouse codes).
 
 | | |
 |---|---|
 | **Module ID** | `as.onecstock` |
-| **REST method** | `as.stock.import` (POST) |
-| **REST scope** | `asintegration` |
+| **Integration** | HTTP POST + JSON (see URLs below) |
+| **Auth** | `X-Stock-Import-Key` / `access_key` in body / `login`+`password` in body |
 | **PHP** | 7.4+ (project-tested; align with your Bitrix version) |
+
+**Breaking change (1.0.6+):** the former REST method `as.stock.import` and webhook registration were **removed**. Clients that called `/rest/.../as.stock.import` must switch to the **same JSON body** via **POST** to one of the HTTP URLs below.
 
 ## Links
 
@@ -18,9 +20,17 @@
 - **Clone:** `git clone https://github.com/Father1993/bitrix-as-onecstock.git`
 - **Issues / ideas:** [github.com/Father1993/bitrix-as-onecstock/issues](https://github.com/Father1993/bitrix-as-onecstock/issues)
 
+## HTTP entry points (recommended)
+
+- **`/local/tools/as_onecstock_import.php`** — удобный URL для интеграций (полный prolog, проверка ключа как у внешнего клиента).
+- **`/local/modules/as.onecstock/public/http_import.php`** — то же назначение, если веб-сервер отдаёт файлы из `local`.
+- **`public/http_stocks_import.php`** (в каталоге модуля) — подключать **после** чужого `prolog` (агент, внутренний сценарий); по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.
+
+Метод запроса: **POST**, ответ: **JSON**, коды HTTP и формат ошибок — как в `asStockImportFrom1cRun()` (`include/stock_import_engine.php`).
+
 ## Features
 
-- REST method `as.stock.import` for inbound webhook integration (Bitrix24 / portal REST).
+- Single HTTP contour for inbound stock JSON (no REST module required for import).
 - Configurable limits via **Settings → Modules → as.onecstock** with fallback to `ONEC_STOCK_IMPORT_*` constants in `php_interface` (optional).
 - Batch processing, body size limits, optional default store ID.
 - Optional include: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
@@ -28,7 +38,6 @@
 ## Requirements
 
 - 1C-Bitrix with **Catalog** and **Iblock** modules.
-- **REST** module installed if you use the webhook (recommended for production).
 
 ## Installation
 
@@ -56,9 +65,11 @@ This module is deployed as files under `local/modules/as.onecstock/` (not necess
 2. Open **`/bitrix/admin/partner_modules.php`**, find **AS: 1C stock import** (`as.onecstock`) → **Install**.  
    The installer defines **`PARTNER_NAME`** / **`PARTNER_URI`** for correct partner-module registration.
 
-3. Create or update a REST inbound webhook and grant scope **`asintegration`**, then call method **`as.stock.import`** (POST).
+3. Point your 1C (or other client) to **`POST`** on **`/local/tools/as_onecstock_import.php`** (or `public/http_import.php` under the module) with the same JSON contract as documented in `stock_import_engine.php`. Configure **`ONEC_STOCK_IMPORT_ACCESS_KEY`** (or equivalent module settings) in `local/php_interface/include/config.php`.
 
 4. Site-specific secrets (e.g. `ONEC_STOCK_IMPORT_ACCESS_KEY`) should live in your `local/php_interface/include/config.php` or environment policy — **do not commit production keys**.
+
+On upgrade to **1.0.6+**, the module run clears legacy **`OnRestServiceBuildDescription`** handlers from the database (if the **rest** module is installed), so old REST registrations for this module are removed automatically.
 
 ## Troubleshooting
 
@@ -106,7 +117,7 @@ WHERE MODULE_ID IN ('as.onecstock', 'mk27.onecstock');
 - If **`as.onecstock`** exists with **`INSTALLED = 'Y'`**, the module is already registered — use **Uninstall** if you need a clean reinstall, or open module settings.
 - Remove obsolete rows for old IDs (e.g. `mk27.onecstock`) after migration to avoid confusion.
 
-If installation fails mid-way, this module’s installer attempts to **roll back** (unregister REST handlers and `unRegisterModule`) when an exception is thrown after `registerModule`.
+If installation fails mid-way, this module’s installer attempts to **roll back** (legacy REST cleanup and `unRegisterModule`) when an exception is thrown after `registerModule`.
 
 ### PHP errors
 
@@ -123,4 +134,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Русский:** ID с **точкой** → только **`partner_modules.php`**, не `module_admin.php`. Если кнопка **Установить** только перезагружает страницу — один раз откройте **`/local/modules/as.onecstock/install/tools/force_install.php`** под админом, затем **удалите этот файл**. REST: `as.stock.import`. Репозиторий: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).
+**Русский:** ID с **точкой** → только **`partner_modules.php`**, не `module_admin.php`. Если кнопка **Установить** только перезагружает страницу — один раз откройте **`/local/modules/as.onecstock/install/tools/force_install.php`** под админом, затем **удалите этот файл**. Импорт остатков: **POST** на **`/local/tools/as_onecstock_import.php`**. Репозиторий: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).

@@ -14,7 +14,11 @@ final class Installer
     /** @var bool Одна проверка версии за HTTP-запрос при повторном includeModule. */
     private static $syncIfNewVersionRan = false;
 
-    public static function syncRestEvents(): void
+    /**
+     * Снятие устаревших обработчиков OnRestServiceBuildDescription (версии с REST).
+     * Вызывать при обновлении модуля и при деинсталляции.
+     */
+    public static function unregisterLegacyRestHandlers(): void
     {
         if (!ModuleManager::isModuleInstalled('rest')) {
             return;
@@ -24,19 +28,19 @@ final class Installer
             'rest',
             'OnRestServiceBuildDescription',
             self::MODULE_ID,
-            '\\As\\Onecstock\\Rest\\StockImportService',
+            '\\As\\Onecstock\\Rest\\RestService',
             'onRestServiceBuildDescription'
         );
-        $em->registerEventHandler(
+        $em->unregisterEventHandler(
             'rest',
             'OnRestServiceBuildDescription',
             self::MODULE_ID,
-            '\\As\\Onecstock\\Rest\\RestService',
+            '\\As\\Onecstock\\Rest\\StockImportService',
             'onRestServiceBuildDescription'
         );
     }
 
-    /** Перерегистрация REST при смене версии файлов модуля (деплой без переустановки). */
+    /** При смене версии файлов модуля: снять REST (если был), права админов, запись install_script_version. */
     public static function syncIfNewVersion(): void
     {
         if (self::$syncIfNewVersionRan) {
@@ -58,7 +62,7 @@ final class Installer
         if ($saved === $ver) {
             return;
         }
-        self::syncRestEvents();
+        self::unregisterLegacyRestHandlers();
         self::grantAdminGroupsWriteAccess();
         Option::set(self::MODULE_ID, 'install_script_version', $ver);
     }

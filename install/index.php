@@ -118,9 +118,6 @@ class as_onecstock extends CModule
 
     public function InstallEvents()
     {
-        require_once dirname(__DIR__) . '/lib/installer.php';
-        Installer::syncRestEvents();
-
         return true;
     }
 
@@ -136,21 +133,8 @@ class as_onecstock extends CModule
 
     public function UnInstallEvents()
     {
-        $em = \Bitrix\Main\EventManager::getInstance();
-        $em->unregisterEventHandler(
-            'rest',
-            'OnRestServiceBuildDescription',
-            $this->MODULE_ID,
-            '\\As\\Onecstock\\Rest\\RestService',
-            'onRestServiceBuildDescription'
-        );
-        $em->unregisterEventHandler(
-            'rest',
-            'OnRestServiceBuildDescription',
-            $this->MODULE_ID,
-            '\\As\\Onecstock\\Rest\\StockImportService',
-            'onRestServiceBuildDescription'
-        );
+        require_once dirname(__DIR__) . '/lib/installer.php';
+        Installer::unregisterLegacyRestHandlers();
 
         return true;
     }

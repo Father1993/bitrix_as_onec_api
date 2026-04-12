@@ -2,8 +2,9 @@
 
 /**
  * Импорт остатков из 1С в каталог (п. 2.1 ТЗ).
- * Модуль: as.onecstock. REST: карта методов — {@see \As\Onecstock\Rest\RestService}, импорт — {@see \As\Onecstock\Rest\StockImportService::METHOD}.
- * Лимиты запроса: настройки модуля (options.php) с fallback на константы ONEC_STOCK_IMPORT_*.
+ * Модуль: as.onecstock. Публичный приём данных — HTTP POST (JSON), см. public/http_import.php и
+ * /local/tools/as_onecstock_import.php. Лимиты запроса: настройки модуля (options.php) с fallback на
+ * константы ONEC_STOCK_IMPORT_*.
  *
  * Контракт JSON (один из вариантов тела):
  * - Массив: [ { "product_xml_id": "...", "amount": 12.5, "store_id": 1 }, ... ]
@@ -22,7 +23,8 @@
  * - Поле access_key в корне JSON (если объект)
  * - login + password в корне JSON — как в orders_export_to_1c.php ($USER->Login)
  *
- * REST: раннеру можно передать ['payload' => array, 'trust_bitrix_auth' => true], если тело уже разобрано и пользователь авторизован вебхуком.
+ * Внутренний вызов: можно передать ['payload' => array, 'trust_bitrix_auth' => true], если тело уже
+ * разобрано и сессия пользователя уже доверена (например, внутренний сценарий после prolog).
  *
  * @noinspection PhpUndefinedClassInspection
  */
