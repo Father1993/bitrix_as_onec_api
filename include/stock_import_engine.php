@@ -26,6 +26,9 @@
  * Внутренний вызов: можно передать ['payload' => array, 'trust_bitrix_auth' => true], если тело уже
  * разобрано и сессия пользователя уже доверена (например, внутренний сценарий после prolog).
  *
+ * Чтение остатков по XML_ID: {@see \As\Onecstock\Http\JsonApiKernel}, {@see \As\Onecstock\Stock\StockReadService};
+ * общая проверка ключа: {@see asStockApiAuthBySecretKey()}.
+ *
  * @noinspection PhpUndefinedClassInspection
  */
 
@@ -238,26 +241,58 @@ function asStockImportFrom1cRun(array $options = []): array
 }
 
 /**
- * @param mixed $decoded
+ * Проверка секретного ключа: заголовок X-Stock-Import-Key и опционально строка access_key (тело JSON или GET).
+ * Для GET не используйте логин/пароль в URL — только ключ.
+ *
+ * @param string|null $accessKeyFromBodyOrQuery значение access_key
  * @return array{ok:bool, message?:string}
  */
-function asStockImportFrom1cAuth($decoded): array
+function asStockApiAuthBySecretKey(?string $accessKeyFromBodyOrQuery = null): array
 {
     if (defined('ONEC_STOCK_IMPORT_SKIP_AUTH') && ONEC_STOCK_IMPORT_SKIP_AUTH) {
         return ['ok' => true];
     }
 
+    if (!defined('ONEC_STOCK_IMPORT_ACCESS_KEY')) {
+        return [
+            'ok' => false,
+            'message' => 'Не задан ONEC_STOCK_IMPORT_ACCESS_KEY в config.php.',
+        ];
+    }
+
     $expectedKey = (string) ONEC_STOCK_IMPORT_ACCESS_KEY;
-    $key = isset($_SERVER['HTTP_X_STOCK_IMPORT_KEY']) ? (string) $_SERVER['HTTP_X_STOCK_IMPORT_KEY'] : '';
+    $key = isset($_SERVER['HTTP_X_STOCK_IMPORT_KEY']) ? trim((string) $_SERVER['HTTP_X_STOCK_IMPORT_KEY']) : '';
     if ($key !== '' && strlen($key) === strlen($expectedKey) && hash_equals($expectedKey, $key)) {
         return ['ok' => true];
     }
 
-    if (is_array($decoded) && !empty($decoded['access_key'])) {
-        $ak = (string) $decoded['access_key'];
+    if ($accessKeyFromBodyOrQuery !== null) {
+        $ak = trim((string) $accessKeyFromBodyOrQuery);
         if ($ak !== '' && strlen($ak) === strlen($expectedKey) && hash_equals($expectedKey, $ak)) {
             return ['ok' => true];
         }
+    }
+
+    return [
+        'ok' => false,
+        'message' => 'Неверный или отсутствующий ключ доступа (X-Stock-Import-Key или access_key).',
+    ];
+}
+
+/**
+ * @param mixed $decoded
+ * @return array{ok:bool, message?:string}
+ */
+function asStockImportFrom1cAuth($decoded): array
+{
+    $bodyKey = null;
+    if (is_array($decoded) && array_key_exists('access_key', $decoded) && $decoded['access_key'] !== '') {
+        $bodyKey = (string) $decoded['access_key'];
+    }
+
+    $byKey = asStockApiAuthBySecretKey($bodyKey);
+    if ($byKey['ok']) {
+        return ['ok' => true];
     }
 
     if (!is_array($decoded)) {
@@ -267,7 +302,10 @@ function asStockImportFrom1cAuth($decoded): array
     $login = isset($decoded['login']) ? (string) $decoded['login'] : '';
     $password = isset($decoded['password']) ? (string) $decoded['password'] : '';
     if ($login === '' || $password === '') {
-        return ['ok' => false, 'message' => 'Нужен ключ X-Stock-Import-Key, поле access_key или login/password.'];
+        return [
+            'ok' => false,
+            'message' => 'Нужен ключ X-Stock-Import-Key, поле access_key или login/password.',
+        ];
     }
 
     global $USER;

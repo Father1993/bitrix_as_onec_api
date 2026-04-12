@@ -3,13 +3,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Father1993%2Fbitrix--as--onecstock-181717?logo=github)](https://github.com/Father1993/bitrix-as-onecstock)
 
-**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes an **HTTP POST (JSON)** endpoint to **import catalog stock** from **1C** (or any client posting JSON). Uses catalog / iblock APIs and supports store mapping (including list-property based warehouse codes).
+**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework) that exposes **HTTP JSON** integration: **POST** to **import** catalog stock and **GET** (versioned API) to **read** stock by product `xml_id`. Uses catalog / iblock APIs and supports store mapping (including list-property based warehouse codes). This is a **custom** JSON API in `local/`, not Bitrix core `/rest/` methods.
 
 | | |
 |---|---|
 | **Module ID** | `as.onecstock` |
-| **Integration** | HTTP POST + JSON (see URLs below) |
-| **Auth** | `X-Stock-Import-Key` / `access_key` in body / `login`+`password` in body |
+| **Integration** | POST import + GET read (`JsonApiKernel`, see below) |
+| **Auth** | `X-Stock-Import-Key` / `access_key` (body or query) / `login`+`password` (POST body only) |
 | **PHP** | 7.4+ (project-tested; align with your Bitrix version) |
 
 **Breaking change (1.0.6+):** the former REST method `as.stock.import` and webhook registration were **removed**. Clients that called `/rest/.../as.stock.import` must switch to the **same JSON body** via **POST** to one of the HTTP URLs below.
@@ -22,15 +22,37 @@
 
 ## HTTP entry points (recommended)
 
+### Import (POST)
+
 - **`/local/tools/as_onecstock_import.php`** — удобный URL для интеграций (полный prolog, проверка ключа как у внешнего клиента).
 - **`/local/modules/as.onecstock/public/http_import.php`** — то же назначение, если веб-сервер отдаёт файлы из `local`.
 - **`public/http_stocks_import.php`** (в каталоге модуля) — подключать **после** чужого `prolog` (агент, внутренний сценарий); по умолчанию `ONEC_STOCK_IMPORT_SKIP_AUTH = true`.
 
-Метод запроса: **POST**, ответ: **JSON**, коды HTTP и формат ошибок — как в `asStockImportFrom1cRun()` (`include/stock_import_engine.php`).
+Метод: **POST**, ответ: **JSON**, коды HTTP и формат ошибок — как в `asStockImportFrom1cRun()` (`include/stock_import_engine.php`).
+
+### Read stock by xml_id (GET, API v1)
+
+- **`/local/tools/as_onecstock_api.php`** — фронт-контроллер [`As\Onecstock\Http\JsonApiKernel`](lib/http/jsonapikernel.php).
+- Маршрут: **`GET /v1/stocks`** с обязательным query **`xml_id`** (внешний код элемента, как при импорте).
+- Как задать путь, если `PATH_INFO` недоступен: **`?path=/v1/stocks&xml_id=...`**
+- Авторизация: заголовок **`X-Stock-Import-Key`** (рекомендуется) или **`access_key`** в query (ключ попадает в логи прокси — хуже).
+- Ответ **200**: `ok`, `api_version`, `element_id`, `product_xml_id`, `use_store_control`; при складах — **`stores[]`** (`store_id`, `amount`, `title`, `store_xml_id`, …) и **`quantity_total`**; без складов — **`quantity`**. Ошибки: **401**, **404** (`PRODUCT_NOT_FOUND`), **422** (`NOT_CATALOG_PRODUCT`), **400** (пустой `xml_id`).
+
+Пример:
+
+```bash
+curl -sS -G "https://example.ru/local/tools/as_onecstock_api.php" \
+  --data-urlencode "path=/v1/stocks" \
+  --data-urlencode "xml_id=YOUR-PRODUCT-XML-ID" \
+  -H "X-Stock-Import-Key: YOUR_KEY"
+```
+
+Новые методы API: добавлять маршруты в `JsonApiKernel` и обработчики в `lib/` (см. `StockReadService`).
 
 ## Features
 
-- Single HTTP contour for inbound stock JSON (no REST module required for import).
+- Versioned JSON API gateway (`JsonApiKernel`) for read and future methods; import stays on dedicated POST scripts.
+- Single HTTP contour for inbound stock JSON (no Bitrix `rest` module required).
 - Configurable limits via **Settings → Modules → as.onecstock** with fallback to `ONEC_STOCK_IMPORT_*` constants in `php_interface` (optional).
 - Batch processing, body size limits, optional default store ID.
 - Optional include: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
@@ -156,7 +178,7 @@ MIT — see [LICENSE](LICENSE).
 
 - **Установка:** только **`/bitrix/admin/partner_modules.php`** (не `module_admin.php`). **Импорт:** **POST** → **`/local/tools/as_onecstock_import.php`**, JSON как в разделе «Тело запроса» в [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Переустановка:** в админке **Удалить** модуль → **Установить** снова; либо просто обновить файлы модуля — при смене версии в `install/version.php` выполнится синхронизация (снятие старых REST-обработчиков, права админов). Аварийно: **`force_install.php`** один раз, потом удалить с прода.
-- **Разработка:** правки в `local/modules/as.onecstock/` (`stock_import_engine.php`, `lib/`, `http_import_response.php`); не дублировать ответ JSON в трёх входах. Проект целиком: корневой [`README.md`](../../../README.md).
+- **Разработка:** правки в `local/modules/as.onecstock/` (`stock_import_engine.php`, `lib/http/jsonapikernel.php`, `lib/stock/stockreadservice.php`, `http_import_response.php`); импорт — отдельно от чтения. Проект целиком: корневой [`README.md`](../../../README.md).
 - **Масштабирование:** лимиты в настройках модуля и `ONEC_STOCK_IMPORT_*`; при росте нагрузки — ресурсы PHP, батчи, при необходимости очередь перед endpoint.
 
 Репозиторий модуля: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock).
