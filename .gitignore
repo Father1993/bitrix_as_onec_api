@@ -9,6 +9,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
+.qwen/
 
 # PHP
 vendor/
