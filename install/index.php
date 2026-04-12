@@ -44,13 +44,32 @@ class as_onecstock extends CModule
             ModuleManager::registerModule($this->MODULE_ID);
             $this->InstallDB();
             $this->InstallEvents();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $this->rollbackInstall();
             $APPLICATION->ThrowException($e->getMessage());
 
             return false;
         }
 
         return true;
+    }
+
+    /**
+     * Откат при ошибке после registerModule: снять обработчики и удалить запись модуля.
+     */
+    private function rollbackInstall(): void
+    {
+        if (!ModuleManager::isModuleInstalled($this->MODULE_ID)) {
+            return;
+        }
+        try {
+            $this->UnInstallEvents();
+        } catch (\Throwable $ignore) {
+        }
+        try {
+            ModuleManager::unRegisterModule($this->MODULE_ID);
+        } catch (\Throwable $ignore) {
+        }
     }
 
     public function DoUninstall()
@@ -66,7 +85,7 @@ class as_onecstock extends CModule
         try {
             $this->UnInstallEvents();
             $this->UnInstallDB();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $APPLICATION->ThrowException($e->getMessage());
 
             return false;
