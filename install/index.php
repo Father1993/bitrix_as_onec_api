@@ -20,6 +20,12 @@ class as_onecstock extends CModule
     public $MODULE_NAME;
     public $MODULE_DESCRIPTION;
 
+    /** @var string Партнёрские модули (ID с точкой): для partner_modules.php. */
+    public $PARTNER_NAME;
+
+    /** @var string Ссылка на автора / репозиторий. */
+    public $PARTNER_URI;
+
     public function __construct()
     {
         $arModuleVersion = [];
@@ -28,6 +34,8 @@ class as_onecstock extends CModule
         $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
         $this->MODULE_NAME = GetMessage('AS_ONECSTOCK_MODULE_NAME');
         $this->MODULE_DESCRIPTION = GetMessage('AS_ONECSTOCK_MODULE_DESCRIPTION');
+        $this->PARTNER_NAME = 'Andrej Spinej';
+        $this->PARTNER_URI = 'https://github.com/Father1993/bitrix-as-onecstock';
     }
 
     public function DoInstall()

@@ -32,11 +32,16 @@
 
 ## Installation
 
-**Use the product module list, not the partner/marketplace installer page.**
+### Where the module appears in the admin (important)
 
-Per [Bitrix Framework: creating a module](https://docs.1c-bitrix.ru/pages/get-started/create-module.html), custom modules under `/local/modules/` are installed from **Settings → Product settings → Modules** (Настройки продукта → Модули).
+Module ID is **`as.onecstock`** (contains a **dot**). In 1C-Bitrix such IDs are treated as **partner-style** modules:
 
-Do **not** rely on **`/bitrix/admin/partner_modules.php`** for this local module: that screen targets marketplace/partner solution flows; the Install action there may not refresh or may not run the same path, so it can look like “nothing happened”. This module is **not** installed from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/) as a downloaded solution — you deploy files into `local/modules/as.onecstock/` first.
+- They are listed under **`/bitrix/admin/partner_modules.php`** (Настройки → Настройки продукта → **Модули** → подраздел партнёрских / маркетплейс-модулей — точное название пункта меню зависит от редакции).
+- They are **often not shown** on the short list **`/bitrix/admin/module_admin.php`**, which is oriented at modules **without** a dot in the ID.
+
+So if you do not see `as.onecstock` on `module_admin.php`, that is **expected**. Install from **`partner_modules.php`** (or use the same entry from **Product settings → Modules** tree if your build links there).
+
+This module is deployed as files under `local/modules/as.onecstock/` (not necessarily downloaded from [marketplace.1c-bitrix.ru](https://marketplace.1c-bitrix.ru/)).
 
 1. Copy this folder to:
 
@@ -48,7 +53,8 @@ Do **not** rely on **`/bitrix/admin/partner_modules.php`** for this local module
    git clone https://github.com/Father1993/bitrix-as-onecstock.git local/modules/as.onecstock
    ```
 
-2. In the admin panel open **Settings → Product settings → Modules** → find **AS: 1C stock import** (`as.onecstock`) → **Install**.
+2. Open **`/bitrix/admin/partner_modules.php`**, find **AS: 1C stock import** (`as.onecstock`) → **Install**.  
+   The installer defines **`PARTNER_NAME`** / **`PARTNER_URI`** for correct partner-module registration.
 
 3. Create or update a REST inbound webhook and grant scope **`asintegration`**, then call method **`as.stock.import`** (POST).
 
@@ -56,7 +62,13 @@ Do **not** rely on **`/bitrix/admin/partner_modules.php`** for this local module
 
 ## Troubleshooting
 
-### “Install does nothing” or module already installed
+### “Install does nothing” on partner_modules.php
+
+1. Confirm **`PARTNER_NAME`** and **`PARTNER_URI`** are set in `install/index.php` (this repo includes them).
+2. Check **`b_module`** (below): if the row exists with `INSTALLED = Y`, the UI may still show an old state until refresh; clear cache (**Настройки → Производительность → Очистить кеш**).
+3. Check the **PHP error log** on click — a fatal error can abort the request before redirect.
+
+### Module already installed or stuck state
 
 Check the database (table **`b_module`**):
 
@@ -86,4 +98,4 @@ MIT — see [LICENSE](LICENSE).
 
 ---
 
-**Русский:** модуль приёма остатков каталога для обмена с 1С через REST (`as.stock.import`). **Устанавливайте только из «Настройки продукта → Модули»**, не с `partner_modules.php`. Исходный код: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock). Путь на диске: `local/modules/as.onecstock`.
+**Русский:** модуль с ID **`as.onecstock`** (есть **точка**) — **партнёрский** для Битрикс: смотрите и ставьте с **`/bitrix/admin/partner_modules.php`**, на **`module_admin.php`** его часто **нет** — это нормально. REST: `as.stock.import`. Исходный код: [github.com/Father1993/bitrix-as-onecstock](https://github.com/Father1993/bitrix-as-onecstock). Путь: `local/modules/as.onecstock`.
