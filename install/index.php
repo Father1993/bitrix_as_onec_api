@@ -31,7 +31,7 @@ class as_onec_api extends CModule
         $this->MODULE_NAME = GetMessage('AS_ONEC_API_MODULE_NAME');
         $this->MODULE_DESCRIPTION = GetMessage('AS_ONEC_API_MODULE_DESCRIPTION');
         $this->PARTNER_NAME = 'Andrej Spinej';
-        $this->PARTNER_URI = 'https://github.com/Father1993/bitrix-as-onecstock';
+        $this->PARTNER_URI = 'https://github.com/Father1993/bitrix_as_onec_api';
     }
 
     public function DoInstall()

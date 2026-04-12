@@ -5,7 +5,7 @@
  * Авторизация: X-Stock-Import-Key / access_key / login+password (см. stock_import_engine.php).
  *
  * URL: .../local/modules/as.onec_api/public/http_import.php
- * Канонический API: /local/tools/as_onec_api.php; алиас импорта: /local/tools/as_onecstock_import.php
+ * Канонический API: /local/tools/as_onec_api.php?path=/v1/stocks/import
  */
 
 define('STOP_STATISTICS', true);

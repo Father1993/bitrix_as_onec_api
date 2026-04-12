@@ -5,15 +5,15 @@ namespace As\OnecApi\Http;
 use As\OnecApi\Price\PriceImportService;
 use As\OnecApi\Price\PriceReadService;
 use As\OnecApi\Product\ProductReadService;
-use As\OnecApi\Stock\StockEngineBootstrap;
+use As\OnecApi\Stock\ImportService;
 use As\OnecApi\Stock\StockReadService;
 
 /**
  * Версионируемый JSON API модуля (не rest-модуль Битрикса). Маршруты: PATH_INFO или query path=.
  *
- * Перед любым обработчиком маршрута вызывается {@see StockEngineBootstrap::ensureLoaded()} — подключается
- * {@see include/stock_import_engine.php} (глобальные asStock*, авторизация импорта). Без этого шага нельзя
- * вызывать {@see asStockApiAuthBySecretKey}, {@see asStockImportFrom1cRun} и сервисы, которые опираются на эти функции.
+ * Процедурный {@see include/stock_import_engine.php} подключается лениво: {@see ApiKeyGuard} и сервисы в `lib/`
+ * вызывают {@see \As\OnecApi\Stock\StockEngineBootstrap::ensureLoaded()} после {@see \Bitrix\Main\Loader::includeModule}
+ * для catalog и iblock.
  */
 final class JsonApiKernel
 {
@@ -39,7 +39,6 @@ final class JsonApiKernel
 
         foreach ($this->routes() as [$m, $p, $handler]) {
             if ($m === $method && $this->pathMatches($path, $p)) {
-                StockEngineBootstrap::ensureLoaded();
                 $handler();
 
                 return;
@@ -111,7 +110,7 @@ final class JsonApiKernel
 
     private function handlePostStocksImport(): void
     {
-        $result = asStockImportFrom1cRun();
+        $result = ImportService::run();
         JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
     }
 

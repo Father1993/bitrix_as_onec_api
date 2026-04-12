@@ -18,8 +18,6 @@ final class ImportService
      */
     public static function run(array $options = []): array
     {
-        StockEngineBootstrap::ensureLoaded();
-
         if (!Loader::includeModule('catalog') || !Loader::includeModule('iblock')) {
             return [
                 'http_code' => 500,
@@ -30,6 +28,8 @@ final class ImportService
                 ],
             ];
         }
+
+        StockEngineBootstrap::ensureLoaded();
 
         $trustBitrixAuth = !empty($options['trust_bitrix_auth']);
         $maxBodyBytes = StockImportOptions::getMaxBodyBytes();

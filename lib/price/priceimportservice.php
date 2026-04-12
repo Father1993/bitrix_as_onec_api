@@ -20,8 +20,6 @@ final class PriceImportService
      */
     public static function run(): array
     {
-        StockEngineBootstrap::ensureLoaded();
-
         if (!Loader::includeModule('catalog') || !Loader::includeModule('iblock')) {
             return [
                 'http_code' => 500,
@@ -32,6 +30,8 @@ final class PriceImportService
                 ],
             ];
         }
+
+        StockEngineBootstrap::ensureLoaded();
 
         $maxBodyBytes = StockImportOptions::getMaxBodyBytes();
         $maxItems = StockImportOptions::getMaxItems();

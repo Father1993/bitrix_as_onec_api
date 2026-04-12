@@ -3,7 +3,7 @@
 /**
  * Импорт остатков из 1С в каталог (п. 2.1 ТЗ).
  * Модуль: as.onec_api. Публичный приём данных — HTTP POST (JSON), см. public/http_import.php и
- * /local/tools/as_onec_api.php (алиас as_onecstock_import.php). Лимиты запроса: настройки модуля (options.php) с fallback на
+ * /local/tools/as_onec_api.php. Лимиты запроса: настройки модуля (options.php) с fallback на
  * константы ONEC_STOCK_IMPORT_*.
  *
  * Контракт JSON (один из вариантов тела):
