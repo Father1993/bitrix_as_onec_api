@@ -3,9 +3,11 @@
 /**
  * Настройки модуля для bitrix/admin/settings.php.
  *
- * Важно: при подключении из settings.php файл модуля выполняется ДО объявления в settings.php
- * функций __AdmSettingsDrawList / __AdmSettingsSaveOptions (см. ядро main/admin/settings.php),
- * поэтому вызывать их из options.php нельзя. Описание полей оформлено массивом по аналогии с gist/докой Bitrix.
+ * Сохранение (POST): только при GetGroupRight >= W на модуль. check_bitrix_sessid() не используется —
+ * иначе при вложенном рендере формы через ядро settings.php возможен ложный отказ; защита — права на модуль.
+ *
+ * При подключении из settings.php файл выполняется ДО объявления __AdmSettingsDrawList / __AdmSettingsSaveOptions
+ * (см. main/admin/settings.php), поэтому вызывать их из options.php нельзя. Поля задаются массивом, как в типовых partner-модулях.
  */
 
 defined('B_PROLOG_INCLUDED') || die();

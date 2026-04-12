@@ -19,6 +19,27 @@
 
 **Breaking change (1.1.3+):** `local/tools/as_onecstock_api.php` and `local/tools/as_onecstock_import.php` were **removed**. Use only **`/local/tools/as_onec_api.php`** with `path=/v1/...` (import: `?path=/v1/stocks/import`), or `public/http_import.php` for POST-only stock import.
 
+## Critical behavior
+
+Кратко, что важно не сломать при сопровождении (эксплуатация):
+
+| Тема | Суть |
+|------|------|
+| Точка входа HTTP | Один скрипт `local/tools/as_onec_api.php`, маршруты `path=` / `PATH_INFO`, роутер [`JsonApiKernel`](lib/http/jsonapikernel.php). |
+| Ленивый движок | [`StockEngineBootstrap::ensureLoaded()`](lib/stock/stockenginebootstrap.php) вызывается в сервисах **после** `Loader::includeModule('catalog'/'iblock')`. [`include.php`](include.php) не подключает `stock_import_engine.php` при каждом `includeModule`. |
+| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/stock/importservice.php). |
+| Breaking 1.1.3 | Удалены `local/tools/as_onecstock_*.php`; только POST: [`public/http_import.php`](public/http_import.php). |
+| Лимиты | `b_option` модуля (настройки админки) + fallback `ONEC_STOCK_IMPORT_*` в `php_interface`. |
+
+## Module settings
+
+Файл: [`options.php`](options.php). Форма **Настройки → Настройки продукта → Модули → as.onec_api** (`bitrix/admin/settings.php`):
+
+- Сохранение (`Update` / `RestoreDefaults`) выполняется только при **`GetGroupRight('as.onec_api') >= 'W'`**.
+- **`check_bitrix_sessid()` не вызывается** намеренно: при вложенном выводе формы через ядро `settings.php` проверка sessid давала ложный отказ. Защита — права на модуль и стандартная админ-сессия Bitrix (как у многих partner-модулей).
+
+Это **не** то же самое, что кнопка **Install** на `partner_modules.php`: там sessid по-прежнему проверяет **ядро** (см. раздел Troubleshooting ниже).
+
 ## Links
 
 - **Repository:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api)
@@ -55,7 +76,7 @@ curl -sS -G "https://example.ru/local/tools/as_onec_api.php" \
 
 - Versioned JSON API (`JsonApiKernel`): stocks, prices, products; single canonical `as_onec_api.php`.
 - Bitrix **`rest`** module not required for this contour.
-- Configurable limits via **Settings → Modules → as.onec_api** with fallback to `ONEC_STOCK_IMPORT_*` in `php_interface` (optional).
+- Limits and lazy-load details: [Critical behavior](#critical-behavior).
 - Batch processing, body size limits, optional default store ID.
 - Optional: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
 
@@ -120,9 +141,9 @@ On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescript
 
 Install only from **`partner_modules.php`** unless you rename the module (breaking change).
 
-### “Install does nothing” on `partner_modules.php` (silent)
+### `partner_modules.php`: “Install does nothing” (silent)
 
-Install runs only when `install=Y`, user can **`edit_other_settings`**, and **`check_bitrix_sessid()`** succeeds. Use a fresh admin session and the **Install** action from the table (not an old bookmark with stale `sessid`).
+**Только установка модуля:** ядро выполняет install, если `install=Y`, у пользователя есть **`edit_other_settings`**, и проходит **`check_bitrix_sessid()`**. Откройте страницу заново, зайдите админом и нажмите **Install** в таблице (не старый bookmark с просроченным `sessid`). К **форме настроек** модуля в `settings.php` это не относится — см. [Module settings](#module-settings).
 
 **Emergency install:** `/local/modules/as.onec_api/install/tools/force_install.php` once — then **delete on production**.
 
@@ -153,7 +174,7 @@ MIT — see [LICENSE](LICENSE).
 
 **Русский (кратко):**
 
-- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`**. Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl и контракты: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
+- **Установка:** **`/bitrix/admin/partner_modules.php`**. **API:** **`/local/tools/as_onec_api.php`**. **Настройки модуля:** сохранение при праве **W** на `as.onec_api`, **без** `check_bitrix_sessid()` в форме (см. раздел *Module settings* выше). Тесты в Postman: [docs/postman-testing.md](docs/postman-testing.md). Подробные curl: [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 - **Репозиторий:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api).
 - **Переустановка:** Удалить модуль → Установить; или обновить файлы — при смене версии в `install/version.php` выполнится `syncIfNewVersion()`. Аварийно: **`force_install.php`** один раз, затем удалить с прода.
 - **Разработка:** `local/modules/as.onec_api/` (`stock_import_engine.php`, `lib/http/`, `lib/stock/`, `lib/price/`, `lib/product/`). Общий обзор проекта: корневой [`README.md`](../../../README.md).
