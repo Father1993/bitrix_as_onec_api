@@ -6,7 +6,8 @@
 **English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/http/jsonapikernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
 
 **Source code:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api) — canonical repository for this module (`MODULE_ID` **`as.onec_api`**).  
-**Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).
+**Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).  
+**Доработка архитектуры / карта файлов для ИИ:** [EXTENSION.md](EXTENSION.md).
 
 | | |
 |---|---|

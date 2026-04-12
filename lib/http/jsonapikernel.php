@@ -86,20 +86,29 @@ final class JsonApiKernel
         return $path === '' ? '/' : $path;
     }
 
+    private function authorizeGetOr401(?string $queryKey): bool
+    {
+        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
+        if ($auth['ok']) {
+            return true;
+        }
+
+        JsonResponse::send(
+            401,
+            [
+                'ok' => false,
+                'error' => 'UNAUTHORIZED',
+                'message' => $auth['message'] ?? 'Требуется авторизация.',
+            ]
+        );
+
+        return false;
+    }
+
     private function handleGetStocks(): void
     {
         $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
-        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
-        if (!$auth['ok']) {
-            JsonResponse::send(
-                401,
-                [
-                    'ok' => false,
-                    'error' => 'UNAUTHORIZED',
-                    'message' => $auth['message'] ?? 'Требуется авторизация.',
-                ]
-            );
-
+        if (!$this->authorizeGetOr401($queryKey)) {
             return;
         }
 
@@ -117,17 +126,7 @@ final class JsonApiKernel
     private function handleGetPrices(): void
     {
         $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
-        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
-        if (!$auth['ok']) {
-            JsonResponse::send(
-                401,
-                [
-                    'ok' => false,
-                    'error' => 'UNAUTHORIZED',
-                    'message' => $auth['message'] ?? 'Требуется авторизация.',
-                ]
-            );
-
+        if (!$this->authorizeGetOr401($queryKey)) {
             return;
         }
 
@@ -145,17 +144,7 @@ final class JsonApiKernel
     private function handleGetProducts(): void
     {
         $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
-        $auth = ApiKeyGuard::authorizeQueryOrHeader($queryKey);
-        if (!$auth['ok']) {
-            JsonResponse::send(
-                401,
-                [
-                    'ok' => false,
-                    'error' => 'UNAUTHORIZED',
-                    'message' => $auth['message'] ?? 'Требуется авторизация.',
-                ]
-            );
-
+        if (!$this->authorizeGetOr401($queryKey)) {
             return;
         }
 

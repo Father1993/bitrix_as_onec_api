@@ -2,64 +2,31 @@
 
 namespace As\OnecApi\Product;
 
-use As\OnecApi\Stock\StockEngineBootstrap;
+use As\OnecApi\Catalog\CatalogReadPreflight;
+use As\OnecApi\Http\JsonResponse;
 use Bitrix\Catalog\ProductTable;
 use Bitrix\Iblock\ElementTable;
-use Bitrix\Main\Loader;
 
 /**
  * Чтение карточки товара/ТП по XML_ID (элемент ИБ + базовые поля catalog product).
  */
 final class ProductReadService
 {
-    private const API_VERSION = '1';
-
     /**
      * @return array{http_code:int, data:array}
      */
     public static function queryByXmlId(string $xmlId): array
     {
-        $xmlId = trim($xmlId);
-        if ($xmlId === '') {
+        $pre = CatalogReadPreflight::forReadByXmlId($xmlId);
+        if (!$pre['ok']) {
             return [
-                'http_code' => 400,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'BAD_REQUEST',
-                    'message' => 'Укажите параметр xml_id.',
-                    'api_version' => self::API_VERSION,
-                ],
+                'http_code' => $pre['http_code'],
+                'data' => $pre['data'],
             ];
         }
 
-        if (!Loader::includeModule('catalog') || !Loader::includeModule('iblock')) {
-            return [
-                'http_code' => 500,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'MODULES',
-                    'message' => 'Не подключены модули catalog или iblock.',
-                    'api_version' => self::API_VERSION,
-                ],
-            ];
-        }
-
-        StockEngineBootstrap::ensureLoaded();
-
-        $catalogIblockIds = asStockImportFrom1cGetCatalogIblockIds();
-        $elementId = asStockImportFrom1cResolveElementIdByXml($xmlId, $catalogIblockIds);
-        if ($elementId <= 0) {
-            return [
-                'http_code' => 404,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'PRODUCT_NOT_FOUND',
-                    'message' => 'Элемент с указанным XML_ID не найден в каталоге.',
-                    'api_version' => self::API_VERSION,
-                    'product_xml_id' => $xmlId,
-                ],
-            ];
-        }
+        $xmlId = $pre['xml_id'];
+        $elementId = $pre['element_id'];
 
         $el = ElementTable::getList([
             'filter' => ['=ID' => $elementId],
@@ -74,7 +41,7 @@ final class ProductReadService
                     'ok' => false,
                     'error' => 'PRODUCT_NOT_FOUND',
                     'message' => 'Элемент не найден.',
-                    'api_version' => self::API_VERSION,
+                    'api_version' => JsonResponse::API_VERSION,
                     'product_xml_id' => $xmlId,
                 ],
             ];
@@ -95,7 +62,7 @@ final class ProductReadService
 
         $payload = [
             'ok' => true,
-            'api_version' => self::API_VERSION,
+            'api_version' => JsonResponse::API_VERSION,
             'product_xml_id' => $xmlId,
             'element' => [
                 'id' => (int) $el['ID'],

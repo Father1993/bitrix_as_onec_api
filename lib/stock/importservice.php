@@ -13,6 +13,22 @@ use As\OnecApi\StockImportOptions;
 final class ImportService
 {
     /**
+     * @return array{http_code:int, data:array}
+     */
+    private static function payloadTooLargeResponse(int $maxBodyBytes): array
+    {
+        return [
+            'http_code' => 413,
+            'data' => [
+                'ok' => false,
+                'error' => 'PAYLOAD_TOO_LARGE',
+                'message' => 'Превышен размер тела запроса.',
+                'max_bytes' => $maxBodyBytes,
+            ],
+        ];
+    }
+
+    /**
      * @param array{payload?:array, trust_bitrix_auth?:bool} $options
      * @return array{http_code:int, data:array}
      */
@@ -40,15 +56,7 @@ final class ImportService
             $decoded = $options['payload'];
             $len = strlen(json_encode($decoded, JSON_UNESCAPED_UNICODE));
             if ($len > $maxBodyBytes) {
-                return [
-                    'http_code' => 413,
-                    'data' => [
-                        'ok' => false,
-                        'error' => 'PAYLOAD_TOO_LARGE',
-                        'message' => 'Превышен размер тела запроса.',
-                        'max_bytes' => $maxBodyBytes,
-                    ],
-                ];
+                return self::payloadTooLargeResponse($maxBodyBytes);
             }
         } else {
             $raw = file_get_contents('php://input');
@@ -61,15 +69,7 @@ final class ImportService
 
             $len = strlen($raw);
             if ($len > $maxBodyBytes) {
-                return [
-                    'http_code' => 413,
-                    'data' => [
-                        'ok' => false,
-                        'error' => 'PAYLOAD_TOO_LARGE',
-                        'message' => 'Превышен размер тела запроса.',
-                        'max_bytes' => $maxBodyBytes,
-                    ],
-                ];
+                return self::payloadTooLargeResponse($maxBodyBytes);
             }
 
             $decoded = json_decode($raw, true);
