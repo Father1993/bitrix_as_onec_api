@@ -1,7 +1,6 @@
 <?php
 
 use As\Onecstock\Installer;
-use Bitrix\Main\GroupTable;
 use Bitrix\Main\ModuleManager;
 
 IncludeModuleLangFile(__FILE__);
@@ -101,15 +100,8 @@ class as_onecstock extends CModule
 
     public function InstallDB($arParams = [])
     {
-        global $APPLICATION;
-
-        $result = GroupTable::getList([
-            'filter' => ['=ADMIN' => 'Y', '=ACTIVE' => 'Y'],
-            'select' => ['ID'],
-        ]);
-        while ($row = $result->fetch()) {
-            $APPLICATION->SetGroupRight($this->MODULE_ID, (int) $row['ID'], 'W');
-        }
+        require_once dirname(__DIR__) . '/lib/installer.php';
+        Installer::grantAdminGroupsWriteAccess();
 
         return true;
     }

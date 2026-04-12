@@ -4,7 +4,7 @@ namespace As\Onecstock;
 
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\EventManager;
-use Bitrix\Main\GroupTable;
+use Bitrix\Main\Loader;
 use Bitrix\Main\ModuleManager;
 
 final class Installer
@@ -63,16 +63,19 @@ final class Installer
         Option::set(self::MODULE_ID, 'install_script_version', $ver);
     }
 
-    /** Права W для групп с ADMIN=Y — при установке и при смене версии модуля (обновление без переустановки). */
+    /**
+     * Права W для админ-групп (ADMIN=Y в b_group). Через CGroup — поле ADMIN не в map D7 GroupTable.
+     */
     public static function grantAdminGroupsWriteAccess(): void
     {
         global $APPLICATION;
 
-        $result = GroupTable::getList([
-            'filter' => ['=ADMIN' => 'Y', '=ACTIVE' => 'Y'],
-            'select' => ['ID'],
-        ]);
-        while ($row = $result->fetch()) {
+        if (!Loader::includeModule('main')) {
+            return;
+        }
+
+        $rs = \CGroup::GetList('c_sort', 'asc', ['ADMIN' => 'Y', 'ACTIVE' => 'Y']);
+        while ($row = $rs->Fetch()) {
             $APPLICATION->SetGroupRight(self::MODULE_ID, (int) $row['ID'], 'W');
         }
     }
