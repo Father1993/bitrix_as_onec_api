@@ -2,8 +2,9 @@
 
 /**
  * Импорт остатков из 1С в каталог (п. 2.1 ТЗ).
- * Модуль: as.onecstock. REST: карта методов — {@see \As\Onecstock\Rest\RestService}, импорт — {@see \As\Onecstock\Rest\StockImportService::METHOD}.
- * Лимиты запроса: настройки модуля (options.php) с fallback на константы ONEC_STOCK_IMPORT_*.
+ * Модуль: as.onec_api. Публичный приём данных — HTTP POST (JSON), см. public/http_import.php и
+ * /local/tools/as_onec_api.php. Лимиты запроса: настройки модуля (options.php) с fallback на
+ * константы ONEC_STOCK_IMPORT_*.
  *
  * Контракт JSON (один из вариантов тела):
  * - Массив: [ { "product_xml_id": "...", "amount": 12.5, "store_id": 1 }, ... ]
@@ -22,21 +23,23 @@
  * - Поле access_key в корне JSON (если объект)
  * - login + password в корне JSON — как в orders_export_to_1c.php ($USER->Login)
  *
- * REST: раннеру можно передать ['payload' => array, 'trust_bitrix_auth' => true], если тело уже разобрано и пользователь авторизован вебхуком.
+ * Внутренний вызов: можно передать ['payload' => array, 'trust_bitrix_auth' => true], если тело уже
+ * разобрано и сессия пользователя уже доверена (например, внутренний сценарий после prolog).
+ *
+ * Чтение остатков по XML_ID: {@see \As\OnecApi\Http\JsonApiKernel}, {@see \As\OnecApi\Stock\StockReadService};
+ * общая проверка ключа: {@see asStockApiAuthBySecretKey()}.
  *
  * @noinspection PhpUndefinedClassInspection
  */
 
-use Bitrix\Catalog\Config\State;
 use Bitrix\Catalog\ProductTable;
 use Bitrix\Catalog\StoreProductTable;
 use Bitrix\Catalog\StoreTable;
 use Bitrix\Iblock\ElementTable;
 use Bitrix\Iblock\PropertyEnumerationTable;
 use Bitrix\Iblock\PropertyTable;
-use Bitrix\Main\Application;
 use Bitrix\Main\Loader;
-use As\Onecstock\StockImportOptions;
+use As\OnecApi\StockImportOptions;
 
 /**
  * @param array{payload?:array, trust_bitrix_auth?:bool} $options
@@ -44,194 +47,45 @@ use As\Onecstock\StockImportOptions;
  */
 function asStockImportFrom1cRun(array $options = []): array
 {
-    if (!Loader::includeModule('catalog') || !Loader::includeModule('iblock')) {
+    return \As\OnecApi\Stock\ImportService::run($options);
+}
+
+/**
+ * Проверка секретного ключа: заголовок X-Stock-Import-Key и опционально строка access_key (тело JSON или GET).
+ * Для GET не используйте логин/пароль в URL — только ключ.
+ *
+ * @param string|null $accessKeyFromBodyOrQuery значение access_key
+ * @return array{ok:bool, message?:string}
+ */
+function asStockApiAuthBySecretKey(?string $accessKeyFromBodyOrQuery = null): array
+{
+    if (defined('ONEC_STOCK_IMPORT_SKIP_AUTH') && ONEC_STOCK_IMPORT_SKIP_AUTH) {
+        return ['ok' => true];
+    }
+
+    if (!defined('ONEC_STOCK_IMPORT_ACCESS_KEY')) {
         return [
-            'http_code' => 500,
-            'data' => [
-                'ok' => false,
-                'error' => 'MODULES',
-                'message' => 'Не подключены модули catalog или iblock.',
-            ],
+            'ok' => false,
+            'message' => 'Не задан ONEC_STOCK_IMPORT_ACCESS_KEY в config.php.',
         ];
     }
 
-    $trustBitrixAuth = !empty($options['trust_bitrix_auth']);
-    $maxBodyBytes = StockImportOptions::getMaxBodyBytes();
-    $maxItems = StockImportOptions::getMaxItems();
-    $batchSize = StockImportOptions::getBatchSize();
+    $expectedKey = (string) ONEC_STOCK_IMPORT_ACCESS_KEY;
+    $key = isset($_SERVER['HTTP_X_STOCK_IMPORT_KEY']) ? trim((string) $_SERVER['HTTP_X_STOCK_IMPORT_KEY']) : '';
+    if ($key !== '' && strlen($key) === strlen($expectedKey) && hash_equals($expectedKey, $key)) {
+        return ['ok' => true];
+    }
 
-    if (array_key_exists('payload', $options) && is_array($options['payload'])) {
-        $decoded = $options['payload'];
-        $len = strlen(json_encode($decoded, JSON_UNESCAPED_UNICODE));
-        if ($len > $maxBodyBytes) {
-            return [
-                'http_code' => 413,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'PAYLOAD_TOO_LARGE',
-                    'message' => 'Превышен размер тела запроса.',
-                    'max_bytes' => $maxBodyBytes,
-                ],
-            ];
-        }
-    } else {
-        $raw = file_get_contents('php://input');
-        if ($raw === false) {
-            return [
-                'http_code' => 400,
-                'data' => ['ok' => false, 'error' => 'EMPTY_BODY', 'message' => 'Пустое тело запроса.'],
-            ];
-        }
-
-        $len = strlen($raw);
-        if ($len > $maxBodyBytes) {
-            return [
-                'http_code' => 413,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'PAYLOAD_TOO_LARGE',
-                    'message' => 'Превышен размер тела запроса.',
-                    'max_bytes' => $maxBodyBytes,
-                ],
-            ];
-        }
-
-        $decoded = json_decode($raw, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            return [
-                'http_code' => 400,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'INVALID_JSON',
-                    'message' => 'Некорректный JSON.',
-                ],
-            ];
+    if ($accessKeyFromBodyOrQuery !== null) {
+        $ak = trim((string) $accessKeyFromBodyOrQuery);
+        if ($ak !== '' && strlen($ak) === strlen($expectedKey) && hash_equals($expectedKey, $ak)) {
+            return ['ok' => true];
         }
     }
-
-    if (!$trustBitrixAuth) {
-        $auth = asStockImportFrom1cAuth($decoded);
-        if (!$auth['ok']) {
-            return [
-                'http_code' => 401,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'AUTH',
-                    'message' => $auth['message'] ?? 'Ошибка авторизации.',
-                ],
-            ];
-        }
-    }
-
-    $items = asStockImportFrom1cNormalizeItems($decoded);
-    if ($items === null) {
-        return [
-            'http_code' => 400,
-            'data' => [
-                'ok' => false,
-                'error' => 'INVALID_ITEMS',
-                'message' => 'Ожидается непустой массив items или корневой JSON-массив позиций.',
-            ],
-        ];
-    }
-
-    if (count($items) > $maxItems) {
-        return [
-            'http_code' => 400,
-            'data' => [
-                'ok' => false,
-                'error' => 'TOO_MANY_ITEMS',
-                'message' => 'Слишком много позиций в запросе.',
-                'max_items' => $maxItems,
-            ],
-        ];
-    }
-
-    $useStores = State::isUsedInventoryManagement();
-    $catalogIblockIds = asStockImportFrom1cGetCatalogIblockIds();
-
-    $summary = [
-        'ok' => true,
-        'inventory_management' => $useStores,
-        'total' => count($items),
-        'updated' => 0,
-        'failed' => 0,
-        'errors' => [],
-    ];
-
-    $batches = array_chunk($items, $batchSize);
-    $connection = Application::getConnection();
-
-    foreach ($batches as $batchIndex => $batch) {
-        $productIdsForRecalc = [];
-
-        try {
-            $connection->startTransaction();
-
-            foreach ($batch as $idx => $row) {
-                $globalIndex = $batchIndex * $batchSize + $idx;
-                $r = asStockImportFrom1cApplyRow($row, $useStores, $catalogIblockIds);
-                if ($r['ok']) {
-                    $summary['updated']++;
-                    if (!empty($r['product_id'])) {
-                        $productIdsForRecalc[$r['product_id']] = true;
-                    }
-                } else {
-                    $summary['failed']++;
-                    if (count($summary['errors']) < 200) {
-                        $summary['errors'][] = [
-                            'index' => $globalIndex,
-                            'product_xml_id' => $row['product_xml_id'] ?? null,
-                            'product_id' => $row['product_id'] ?? null,
-                            'message' => $r['message'],
-                        ];
-                    }
-                }
-            }
-
-            $connection->commitTransaction();
-
-            if ($useStores && $productIdsForRecalc !== []) {
-                /**
-                 * @todo Заменить на проверенный D7-аналог при появлении в ядре и тестах паритета агрегированных остатков.
-                 */
-                \CCatalogStore::recalculateProductsBalances(array_map('intval', array_keys($productIdsForRecalc)));
-            }
-        } catch (\Throwable $e) {
-            $connection->rollbackTransaction();
-            asStockImportFrom1cLog('batch_exception', [
-                'batch' => $batchIndex,
-                'message' => $e->getMessage(),
-            ]);
-            return [
-                'http_code' => 500,
-                'data' => [
-                    'ok' => false,
-                    'error' => 'BATCH_FAILED',
-                    'message' => 'Ошибка при обработке пакета.',
-                    'batch_index' => $batchIndex,
-                ],
-            ];
-        }
-    }
-
-    if (!$useStores) {
-        \Bitrix\Catalog\Model\Product::clearCache();
-    }
-
-    if ($summary['failed'] > count($summary['errors'])) {
-        $summary['errors_truncated'] = true;
-    }
-
-    asStockImportFrom1cLog('import_done', [
-        'updated' => $summary['updated'],
-        'failed' => $summary['failed'],
-        'inventory' => $useStores,
-    ]);
 
     return [
-        'http_code' => 200,
-        'data' => $summary,
+        'ok' => false,
+        'message' => 'Неверный или отсутствующий ключ доступа (X-Stock-Import-Key или access_key).',
     ];
 }
 
@@ -241,21 +95,14 @@ function asStockImportFrom1cRun(array $options = []): array
  */
 function asStockImportFrom1cAuth($decoded): array
 {
-    if (defined('ONEC_STOCK_IMPORT_SKIP_AUTH') && ONEC_STOCK_IMPORT_SKIP_AUTH) {
-        return ['ok' => true];
+    $bodyKey = null;
+    if (is_array($decoded) && array_key_exists('access_key', $decoded) && $decoded['access_key'] !== '') {
+        $bodyKey = (string) $decoded['access_key'];
     }
 
-    $expectedKey = (string) ONEC_STOCK_IMPORT_ACCESS_KEY;
-    $key = isset($_SERVER['HTTP_X_STOCK_IMPORT_KEY']) ? (string) $_SERVER['HTTP_X_STOCK_IMPORT_KEY'] : '';
-    if ($key !== '' && strlen($key) === strlen($expectedKey) && hash_equals($expectedKey, $key)) {
+    $byKey = asStockApiAuthBySecretKey($bodyKey);
+    if ($byKey['ok']) {
         return ['ok' => true];
-    }
-
-    if (is_array($decoded) && !empty($decoded['access_key'])) {
-        $ak = (string) $decoded['access_key'];
-        if ($ak !== '' && strlen($ak) === strlen($expectedKey) && hash_equals($expectedKey, $ak)) {
-            return ['ok' => true];
-        }
     }
 
     if (!is_array($decoded)) {
@@ -265,7 +112,10 @@ function asStockImportFrom1cAuth($decoded): array
     $login = isset($decoded['login']) ? (string) $decoded['login'] : '';
     $password = isset($decoded['password']) ? (string) $decoded['password'] : '';
     if ($login === '' || $password === '') {
-        return ['ok' => false, 'message' => 'Нужен ключ X-Stock-Import-Key, поле access_key или login/password.'];
+        return [
+            'ok' => false,
+            'message' => 'Нужен ключ X-Stock-Import-Key, поле access_key или login/password.',
+        ];
     }
 
     global $USER;

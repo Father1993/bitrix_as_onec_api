@@ -1,24 +1,26 @@
 <?php
 
-use As\Onecstock\Installer;
+use As\OnecApi\Installer;
 use Bitrix\Main\ModuleManager;
 
 IncludeModuleLangFile(__FILE__);
 
-if (class_exists('as_onecstock', false)) {
-    return;
-}
-
 /**
- * Имя класса as_onecstock задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
+ * Имя класса as_onec_api задано ядром: CModule::CreateModuleObject() ищет str_replace('.', '_', MODULE_ID).
  */
-class as_onecstock extends CModule
+class as_onec_api extends CModule
 {
-    public $MODULE_ID = 'as.onecstock';
+    public $MODULE_ID = 'as.onec_api';
     public $MODULE_VERSION;
     public $MODULE_VERSION_DATE;
     public $MODULE_NAME;
     public $MODULE_DESCRIPTION;
+
+    /** @var string Партнёрские модули (ID с точкой): для partner_modules.php. */
+    public $PARTNER_NAME;
+
+    /** @var string Ссылка на автора / репозиторий. */
+    public $PARTNER_URI;
 
     public function __construct()
     {
@@ -26,8 +28,10 @@ class as_onecstock extends CModule
         include __DIR__ . '/version.php';
         $this->MODULE_VERSION = $arModuleVersion['VERSION'];
         $this->MODULE_VERSION_DATE = $arModuleVersion['VERSION_DATE'];
-        $this->MODULE_NAME = GetMessage('AS_ONECSTOCK_MODULE_NAME');
-        $this->MODULE_DESCRIPTION = GetMessage('AS_ONECSTOCK_MODULE_DESCRIPTION');
+        $this->MODULE_NAME = GetMessage('AS_ONEC_API_MODULE_NAME');
+        $this->MODULE_DESCRIPTION = GetMessage('AS_ONEC_API_MODULE_DESCRIPTION');
+        $this->PARTNER_NAME = 'Andrej Spinej';
+        $this->PARTNER_URI = 'https://github.com/Father1993/bitrix_as_onec_api';
     }
 
     public function DoInstall()
@@ -35,13 +39,14 @@ class as_onecstock extends CModule
         global $USER, $APPLICATION;
 
         if (!is_object($USER) || !$USER->IsAdmin()) {
-            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+            $APPLICATION->ThrowException(GetMessage('AS_ONEC_API_INSTALL_PERM'));
 
             return false;
         }
 
         try {
             ModuleManager::registerModule($this->MODULE_ID);
+            Installer::migrateOptionsFromLegacyStockModule();
             $this->InstallDB();
             $this->InstallEvents();
         } catch (\Throwable $e) {
@@ -77,7 +82,7 @@ class as_onecstock extends CModule
         global $USER, $APPLICATION;
 
         if (!is_object($USER) || !$USER->IsAdmin()) {
-            $APPLICATION->ThrowException(GetMessage('AS_ONECSTOCK_INSTALL_PERM'));
+            $APPLICATION->ThrowException(GetMessage('AS_ONEC_API_INSTALL_PERM'));
 
             return false;
         }
@@ -96,11 +101,17 @@ class as_onecstock extends CModule
 
     public function InstallDB($arParams = [])
     {
+        require_once dirname(__DIR__) . '/lib/installer.php';
+        Installer::grantAdminGroupsWriteAccess();
+
         return true;
     }
 
     public function UnInstallDB($arParams = [])
     {
+        global $APPLICATION;
+
+        $APPLICATION->DelGroupRight($this->MODULE_ID);
         ModuleManager::unRegisterModule($this->MODULE_ID);
 
         return true;
@@ -108,29 +119,23 @@ class as_onecstock extends CModule
 
     public function InstallEvents()
     {
-        require_once dirname(__DIR__) . '/lib/installer.php';
-        Installer::syncRestEvents();
+        return true;
+    }
 
+    public function InstallFiles()
+    {
+        return true;
+    }
+
+    public function UnInstallFiles()
+    {
         return true;
     }
 
     public function UnInstallEvents()
     {
-        $em = \Bitrix\Main\EventManager::getInstance();
-        $em->unregisterEventHandler(
-            'rest',
-            'OnRestServiceBuildDescription',
-            $this->MODULE_ID,
-            '\\As\\Onecstock\\Rest\\RestService',
-            'onRestServiceBuildDescription'
-        );
-        $em->unregisterEventHandler(
-            'rest',
-            'OnRestServiceBuildDescription',
-            $this->MODULE_ID,
-            '\\As\\Onecstock\\Rest\\StockImportService',
-            'onRestServiceBuildDescription'
-        );
+        require_once dirname(__DIR__) . '/lib/installer.php';
+        Installer::unregisterLegacyRestHandlers();
 
         return true;
     }
