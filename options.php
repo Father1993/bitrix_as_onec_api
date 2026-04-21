@@ -49,6 +49,18 @@ $arTextOptions = [
     ['id' => 'default_store_id', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_DEFAULT_STORE_ID'), 'size' => 12],
 ];
 
+/** @var list<array{id: string, label: string, rows: int}> */
+$arTextareaOptions = [
+    ['id' => 'order_status_map_json', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_ORDER_STATUS_MAP_JSON'), 'rows' => 8],
+    ['id' => 'order_status_allowed_transitions_json', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_ORDER_STATUS_ALLOWED_TRANSITIONS_JSON'), 'rows' => 8],
+];
+
+/** @var list<array{id: string, label: string}> */
+$arCheckboxOptions = [
+    ['id' => 'order_status_sync_payment', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_ORDER_STATUS_SYNC_PAYMENT')],
+    ['id' => 'order_status_sync_shipment', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_ORDER_STATUS_SYNC_SHIPMENT')],
+];
+
 $validatePosted = static function (array $posted): ?string {
     $maxItems = $posted['max_items'] ?? '';
     $batchSize = $posted['batch_size'] ?? '';
@@ -68,6 +80,19 @@ $validatePosted = static function (array $posted): ?string {
         return Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_DEFAULT_STORE_ID');
     }
 
+    foreach (['order_status_map_json', 'order_status_allowed_transitions_json'] as $jsonField) {
+        $raw = trim((string) ($posted[$jsonField] ?? ''));
+        if ($raw === '') {
+            continue;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return $jsonField === 'order_status_map_json'
+                ? Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_ORDER_STATUS_MAP_JSON')
+                : Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_ORDER_STATUS_ALLOWED_TRANSITIONS_JSON');
+        }
+    }
+
     return null;
 };
 
@@ -82,6 +107,10 @@ $normalizeForSave = static function (array $posted): array {
         'batch_size' => $batchSize === '' ? '' : (string) max(1, (int) $batchSize),
         'max_body_bytes' => $maxBody === '' ? '' : (string) max(1024, (int) $maxBody),
         'default_store_id' => $defStore === '' ? '' : (string) max(0, (int) $defStore),
+        'order_status_map_json' => trim((string) ($posted['order_status_map_json'] ?? '')),
+        'order_status_allowed_transitions_json' => trim((string) ($posted['order_status_allowed_transitions_json'] ?? '')),
+        'order_status_sync_payment' => !empty($posted['order_status_sync_payment']) ? 'Y' : 'N',
+        'order_status_sync_shipment' => !empty($posted['order_status_sync_shipment']) ? 'Y' : 'N',
     ];
 };
 
@@ -93,7 +122,16 @@ if ($request->isPost() && $canWrite) {
 
     if ($isRestore || $isUpdate) {
         if ($isRestore) {
-            foreach (['max_items', 'batch_size', 'max_body_bytes', 'default_store_id'] as $name) {
+            foreach ([
+                'max_items',
+                'batch_size',
+                'max_body_bytes',
+                'default_store_id',
+                'order_status_map_json',
+                'order_status_allowed_transitions_json',
+                'order_status_sync_payment',
+                'order_status_sync_shipment',
+            ] as $name) {
                 Option::delete($moduleId, ['name' => $name]);
             }
             CAdminMessage::ShowNote(Loc::getMessage('AS_ONEC_API_OPTIONS_SAVED'));
@@ -101,6 +139,12 @@ if ($request->isPost() && $canWrite) {
             $posted = [];
             foreach ($arTextOptions as $opt) {
                 $posted[$opt['id']] = trim((string) $request->getPost($opt['id']));
+            }
+            foreach ($arTextareaOptions as $opt) {
+                $posted[$opt['id']] = trim((string) $request->getPost($opt['id']));
+            }
+            foreach ($arCheckboxOptions as $opt) {
+                $posted[$opt['id']] = $request->getPost($opt['id']) === 'Y' ? 'Y' : 'N';
             }
 
             $err = $validatePosted($posted);
@@ -121,10 +165,22 @@ $values = [];
 foreach ($arTextOptions as $opt) {
     $values[$opt['id']] = Option::get($moduleId, $opt['id'], '');
 }
+foreach ($arTextareaOptions as $opt) {
+    $values[$opt['id']] = Option::get($moduleId, $opt['id'], '');
+}
+foreach ($arCheckboxOptions as $opt) {
+    $values[$opt['id']] = Option::get($moduleId, $opt['id'], 'N');
+}
 
 if ($stickyValuesAfterError) {
     foreach ($arTextOptions as $opt) {
         $values[$opt['id']] = trim((string) $request->getPost($opt['id']));
+    }
+    foreach ($arTextareaOptions as $opt) {
+        $values[$opt['id']] = trim((string) $request->getPost($opt['id']));
+    }
+    foreach ($arCheckboxOptions as $opt) {
+        $values[$opt['id']] = $request->getPost($opt['id']) === 'Y' ? 'Y' : 'N';
     }
 }
 
@@ -153,6 +209,29 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
         <td width="60%"><input type="text" size="<?= (int) $opt['size'] ?>" name="<?= htmlspecialcharsbx(
             $opt['id']
         ) ?>" value="<?= htmlspecialcharsbx($values[$opt['id']]) ?>"></td>
+    </tr>
+    <?php } ?>
+    <?php foreach ($arTextareaOptions as $opt) { ?>
+    <tr>
+        <td width="40%" style="vertical-align: top;"><?= htmlspecialcharsbx($opt['label']) ?>:</td>
+        <td width="60%">
+            <textarea name="<?= htmlspecialcharsbx($opt['id']) ?>" rows="<?= (int) $opt['rows'] ?>" cols="70"><?= htmlspecialcharsbx(
+                $values[$opt['id']]
+            ) ?></textarea>
+        </td>
+    </tr>
+    <?php } ?>
+    <?php foreach ($arCheckboxOptions as $opt) { ?>
+    <tr>
+        <td width="40%"><?= htmlspecialcharsbx($opt['label']) ?>:</td>
+        <td width="60%">
+            <label>
+                <input type="checkbox" name="<?= htmlspecialcharsbx($opt['id']) ?>" value="Y" <?php if (($values[$opt['id']] ?? 'N') === 'Y') {
+                    echo 'checked';
+                } ?>>
+                <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_YES')) ?>
+            </label>
+        </td>
     </tr>
     <?php } ?>
     <?php

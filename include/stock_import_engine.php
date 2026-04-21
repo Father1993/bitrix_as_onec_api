@@ -139,6 +139,30 @@ function asStockImportFrom1cAuth($decoded): array
  */
 function asStockImportFrom1cNormalizeItems($decoded): ?array
 {
+    $items = asStockImportFrom1cExtractItems($decoded);
+    if ($items === null) {
+        return null;
+    }
+
+    $out = [];
+    foreach ($items as $row) {
+        $validated = asStockImportFrom1cValidateItem($row);
+        if (!$validated['ok']) {
+            continue;
+        }
+
+        $out[] = $validated['row'];
+    }
+
+    return $out === [] ? null : $out;
+}
+
+/**
+ * @param mixed $decoded
+ * @return array<int, mixed>|null
+ */
+function asStockImportFrom1cExtractItems($decoded): ?array
+{
     if (is_array($decoded) && array_keys($decoded) !== range(0, count($decoded) - 1)) {
         if (!isset($decoded['items']) || !is_array($decoded['items'])) {
             return null;
@@ -154,47 +178,77 @@ function asStockImportFrom1cNormalizeItems($decoded): ?array
         return null;
     }
 
-    $out = [];
-    foreach ($items as $row) {
-        if (!is_array($row)) {
-            continue;
+    return $items;
+}
+
+/**
+ * @param mixed $row
+ * @return array{ok:true,row:array<string,mixed>}|array{ok:false,message:string}
+ */
+function asStockImportFrom1cValidateItem($row): array
+{
+    if (!is_array($row)) {
+        return ['ok' => false, 'message' => 'Позиция должна быть объектом JSON.'];
+    }
+
+    $xml =
+        $row['product_xml_id']
+        ?? $row['xml_id']
+        ?? $row['XML_ID']
+        ?? '';
+    $xml = is_string($xml) ? trim($xml) : '';
+
+    $pid = 0;
+    if (array_key_exists('product_id', $row) && $row['product_id'] !== '' && $row['product_id'] !== null) {
+        if (!is_numeric($row['product_id'])) {
+            return ['ok' => false, 'message' => 'Поле product_id должно быть числом.'];
         }
-        $xml =
-            $row['product_xml_id']
-            ?? $row['xml_id']
-            ?? $row['XML_ID']
-            ?? '';
-        $xml = is_string($xml) ? trim($xml) : '';
-
-        $pid = isset($row['product_id']) ? (int) $row['product_id'] : 0;
-
-        $amount = $row['amount'] ?? $row['quantity'] ?? null;
-        if ($amount === null || !is_numeric($amount)) {
-            continue;
+        $pid = (int) $row['product_id'];
+        if ($pid <= 0) {
+            return ['ok' => false, 'message' => 'Поле product_id должно быть положительным числом.'];
         }
-        $amount = (float) $amount;
-        if ($amount < 0) {
-            continue;
+    }
+
+    $amount = $row['amount'] ?? $row['quantity'] ?? null;
+    if ($amount === null || $amount === '') {
+        return ['ok' => false, 'message' => 'Поле amount (или quantity) обязательно.'];
+    }
+    if (!is_numeric($amount)) {
+        return ['ok' => false, 'message' => 'Поле amount должно быть числом.'];
+    }
+    $amount = (float) $amount;
+    if ($amount < 0) {
+        return ['ok' => false, 'message' => 'Поле amount не может быть отрицательным.'];
+    }
+
+    $storeId = 0;
+    if (array_key_exists('store_id', $row) && $row['store_id'] !== '' && $row['store_id'] !== null) {
+        if (!is_numeric($row['store_id'])) {
+            return ['ok' => false, 'message' => 'Поле store_id должно быть числом.'];
         }
-
-        $storeId = isset($row['store_id']) ? (int) $row['store_id'] : 0;
-        $storeXml = $row['store_xml_id'] ?? $row['store_code'] ?? '';
-        $storeXml = is_string($storeXml) ? trim($storeXml) : '';
-
-        if ($pid <= 0 && $xml === '') {
-            continue;
+        $storeId = (int) $row['store_id'];
+        if ($storeId < 0) {
+            return ['ok' => false, 'message' => 'Поле store_id не может быть отрицательным.'];
         }
+    }
 
-        $out[] = [
+    $storeXml = $row['store_xml_id'] ?? $row['store_code'] ?? '';
+    $storeXml = is_string($storeXml) ? trim($storeXml) : '';
+
+    if ($pid <= 0 && $xml === '') {
+        return ['ok' => false, 'message' => 'Нужен product_id или product_xml_id/xml_id/XML_ID.'];
+    }
+
+    return [
+        'ok' => true,
+        'row' => [
             'product_xml_id' => $xml,
             'product_id' => $pid,
             'amount' => $amount,
             'store_id' => $storeId,
             'store_xml_id' => $storeXml,
-        ];
-    }
-
-    return $out === [] ? null : $out;
+        ],
+    ];
 }
 
 /**
@@ -226,11 +280,11 @@ function asStockImportFrom1cApplyRow(array $row, bool $useStores, array $catalog
     $productId = (int) ($row['product_id'] ?? 0);
     if ($productId <= 0) {
         $xml = (string) ($row['product_xml_id'] ?? '');
-        $resolved = asStockImportFrom1cResolveElementIdByXml($xml, $catalogIblockIds);
-        if ($resolved <= 0) {
-            return ['ok' => false, 'message' => 'Элемент с указанным XML_ID не найден в каталоге.'];
+        $resolved = asStockImportFrom1cResolveElementByXml($xml, $catalogIblockIds);
+        if (!$resolved['ok']) {
+            return ['ok' => false, 'message' => $resolved['message']];
         }
-        $productId = $resolved;
+        $productId = $resolved['id'];
     }
 
     $productRow = ProductTable::getList([
@@ -292,7 +346,7 @@ function asStockImportFrom1cApplyRow(array $row, bool $useStores, array $catalog
         return ['ok' => true, 'product_id' => $productId];
     }
 
-    $pRes = ProductTable::update($productId, ['QUANTITY' => $row['amount']]);
+    $pRes = \Bitrix\Catalog\Model\Product::update($productId, ['QUANTITY' => $row['amount']]);
     if (!$pRes->isSuccess()) {
         return [
             'ok' => false,
@@ -305,20 +359,40 @@ function asStockImportFrom1cApplyRow(array $row, bool $useStores, array $catalog
 
 function asStockImportFrom1cResolveElementIdByXml(string $xmlId, array $catalogIblockIds): int
 {
+    $resolved = asStockImportFrom1cResolveElementByXml($xmlId, $catalogIblockIds);
+
+    return !empty($resolved['ok']) ? (int) $resolved['id'] : 0;
+}
+
+/**
+ * @param int[] $catalogIblockIds
+ * @return array{ok:true,id:int}|array{ok:false,message:string}
+ */
+function asStockImportFrom1cResolveElementByXml(string $xmlId, array $catalogIblockIds): array
+{
     if ($xmlId === '' || $catalogIblockIds === []) {
-        return 0;
+        return ['ok' => false, 'message' => 'Элемент с указанным XML_ID не найден в каталоге.'];
     }
 
-    $row = ElementTable::getList([
+    $rows = ElementTable::getList([
         'filter' => [
             '=XML_ID' => $xmlId,
             '@IBLOCK_ID' => $catalogIblockIds,
         ],
         'select' => ['ID'],
-        'limit' => 1,
-    ])->fetch();
+        'order' => ['ID' => 'ASC'],
+        'limit' => 2,
+    ])->fetchAll();
 
-    return $row ? (int) $row['ID'] : 0;
+    if ($rows === []) {
+        return ['ok' => false, 'message' => 'Элемент с указанным XML_ID не найден в каталоге.'];
+    }
+
+    if (count($rows) > 1) {
+        return ['ok' => false, 'message' => 'Найдено несколько элементов с одинаковым XML_ID. Импорт для этой позиции остановлен.'];
+    }
+
+    return ['ok' => true, 'id' => (int) $rows[0]['ID']];
 }
 
 function asStockImportFrom1cResolveStoreId(string $xmlOrCode): int

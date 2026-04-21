@@ -2,6 +2,8 @@
 
 Краткая шпаргалка для ручной проверки эндпоинтов [`JsonApiKernel`](../lib/http/jsonapikernel.php). Полное описание контрактов и curl — в [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 
+Если нужен отдельный понятный документ именно по складам для 1С-программиста, используйте [stocks-api-for-1c-postman.md](stocks-api-for-1c-postman.md).
+
 ## Переменные окружения Postman
 
 | Variable | Пример | Назначение |
@@ -76,6 +78,12 @@
 
 Тот же контракт подходит для `path=/v1/stocks` (POST).
 
+**Что проверить в ответе:**
+
+- `updated` / `failed` отражают итог по всем строкам `items`;
+- `errors[]` содержит причины по битым позициям;
+- при дубле `XML_ID` строка не импортируется и попадает в `errors[]`.
+
 ---
 
 ## 5. POST импорт цен — `/v1/prices`
@@ -100,14 +108,70 @@
 
 `catalog_group_id` — ID типа цены в Битрикс (см. настройки каталога).
 
+**Что проверить в ответе:**
+
+- невалидные `catalog_group_id`, `price`, `product_id` не пропадают молча, а отражаются в `failed` / `errors`;
+- если `XML_ID` неоднозначен, строка получает ошибку и не записывается.
+
+---
+
+## 6. GET заказы — `/v1/orders`
+
+- **Method:** GET  
+- **URL (один заказ):** `{{base_url}}?path=/v1/orders&order_xml_id=ВАШ_XML_ID_ЗАКАЗА`  
+- **URL (список):** `{{base_url}}?path=/v1/orders&page=1&items_per_page=20`  
+- **Headers:** `X-Stock-Import-Key: {{access_key}}`  
+
+Опционально можно фильтровать по `status_id`, искать по `order_id`, а для списка использовать `order_xml_id_like`.
+
+**Что проверить в ответе:**
+
+- при поиске одного заказа приходит объект `order`;
+- для списка приходят `orders[]` и `params.total_items` / `params.total_pages`;
+- в заказе есть не только `status_id`, но и `properties`, `items`, `payments`, `shipments`;
+- для самовывоза заполняется блок `pickup`.
+
+---
+
+## 7. POST статусы заказов — `/v1/orders/status`
+
+- **Method:** POST  
+- **URL:** `{{base_url}}?path=/v1/orders/status`  
+- **Headers:** `Content-Type: application/json; charset=UTF-8`, `X-Stock-Import-Key: {{access_key}}`  
+- **Body (raw JSON):**
+
+```json
+{
+  "items": [
+    {
+      "order_xml_id": "ВАШ_XML_ID_ЗАКАЗА",
+      "status_code_1c": "P",
+      "event_at": "2026-04-21 10:30:00",
+      "comment": "Оплачен в 1С"
+    }
+  ]
+}
+```
+
+Опционально можно передавать `order_id` вместо `order_xml_id`, а также `paid`, `allow_delivery`, `deducted`.
+
+**Что проверить в ответе:**
+
+- `updated` / `failed` / `no_change` корректно отражают результат по строкам;
+- `results[]` содержит успешные и `no_change`-строки с `order_id` / `order_xml_id`;
+- если заказ не найден, ошибка попадает в `errors[]`;
+- если статус уже совпадает, строка попадает в `no_change`;
+- если `XML_ID` заказа неоднозначен, строка не обновляется;
+- если синхронизация оплат/отгрузок выключена, попытка передать `paid` / `allow_delivery` / `deducted` даёт ошибку по строке.
+
 ---
 
 ## Коды ответов (кратко)
 
 | Код | Типичная причина |
 |-----|------------------|
-| 200 | Успех |
-| 400 | Пустое тело, неверный JSON, нет обязательных полей |
+| 200 | Запрос обработан; проверяйте `failed` / `errors`, если в пачке были проблемные строки |
+| 400 | Пустое тело, неверный JSON, нет массива `items` / корневого массива |
 | 401 | Нет/неверный ключ (GET или POST) |
 | 404 | Неизвестный `path` или товар по `xml_id` не найден |
 | 413 | Тело или число элементов превышает лимиты модуля |

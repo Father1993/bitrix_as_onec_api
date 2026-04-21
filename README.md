@@ -3,10 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Father1993%2Fbitrix__as__onec__api-181717?logo=github)](https://github.com/Father1993/bitrix_as_onec_api)
 
-**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/Http/JsonApiKernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`. Uses catalog / iblock D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
+**English:** Drop-in module for **1C-Bitrix** (Bitrix Framework): **HTTP JSON** via [`JsonApiKernel`](lib/Http/JsonApiKernel.php) at **`/local/tools/as_onec_api.php`** — stocks (import + read), prices (import + read), product read by `xml_id`, order read, and order status import from 1C. Uses catalog / iblock / sale D7 APIs and store mapping (including list-property based warehouse codes). Custom API in `local/`, not Bitrix core `/rest/`.
 
 **Source code:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api) — canonical repository for this module (`MODULE_ID` **`as.onec_api`**).  
 **Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).  
+**Склады для 1С-программиста:** [docs/stocks-api-for-1c-postman.md](docs/stocks-api-for-1c-postman.md).  
 **Доработка архитектуры / карта файлов для ИИ:** [EXTENSION.md](EXTENSION.md).
 
 | | |
@@ -28,9 +29,30 @@
 |------|------|
 | Точка входа HTTP | Один скрипт `local/tools/as_onec_api.php`, маршруты `path=` / `PATH_INFO`, роутер [`JsonApiKernel`](lib/Http/JsonApiKernel.php). |
 | Ленивый движок | [`StockEngineBootstrap::ensureLoaded()`](lib/Stock/StockEngineBootstrap.php) вызывается в сервисах **после** `Loader::includeModule('catalog'/'iblock')`. [`include.php`](include.php) не подключает `stock_import_engine.php` при каждом `includeModule`. |
-| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/Stock/ImportService.php). |
+| Импорт остатков | [`asStockImportFrom1cRun()`](include/stock_import_engine.php) — обёртка для агентов/старого кода → [`ImportService::run()`](lib/Stock/ImportService.php); валидация построчная, агрегированные остатки по складам пересчитываются один раз на весь запрос. |
 | Breaking 1.1.3 | Удалены `local/tools/as_onecstock_*.php`; только POST: [`public/http_import.php`](public/http_import.php). |
 | Лимиты | `b_option` модуля (настройки админки) + fallback `ONEC_STOCK_IMPORT_*` в `php_interface`. |
+
+## Текущее состояние интеграции
+
+На текущий момент модуль `as.onec_api` закрывает единый HTTP JSON-контур для интеграции с 1С по остаткам, ценам, товарам и заказам. Основная точка входа одна: `local/tools/as_onec_api.php`, а маршрутизация делается через `path=/v1/...`.
+
+По остаткам:
+
+- чтение остатков идёт через `GET /v1/stocks`;
+- импорт остатков идёт через `POST /v1/stocks/import` или `POST /v1/stocks`;
+- логика работы учитывает оба режима Битрикс: без складского учёта и со складским учётом;
+- при включённом складском учёте запись идёт в складские остатки, а агрегированные остатки каталога пересчитываются один раз на весь запрос;
+- если у товара неоднозначный `XML_ID`, запись блокируется и позиция попадает в `errors[]`, чтобы не обновить не тот товар.
+
+По заказам и статусам:
+
+- добавлен `GET /v1/orders` для чтения заказов прямо из модуля;
+- добавлен `POST /v1/orders/status` для входящего контура `1С -> Bitrix`;
+- входящий код статуса 1С может либо напрямую трактоваться как `STATUS_ID` Битрикс, либо проходить через JSON-мэппинг в настройках;
+- API умеет возвращать `updated`, `failed`, `no_change`, `results[]`, `errors[]`, чтобы 1С могла разбирать итог по строкам, а не только по HTTP-коду;
+- защита от проектных мутаций при сохранении заказа реализована через флаг `AS_ONEC_API_SKIP_ORDER_MUTATORS`, чтобы не срабатывали побочные изменения из `city_handlers.php`;
+- входной `comment` считается служебной информацией интеграции и логируется, но не записывается в `USER_DESCRIPTION`, потому что это поле показывается пользователю в личном кабинете.
 
 ## Module settings
 
@@ -60,6 +82,15 @@
 | GET | `/v1/prices` | Цены по `xml_id` |
 | POST | `/v1/prices` | Импорт цен (`items`: `product_xml_id`, `catalog_group_id`, `price`, `currency`) |
 | GET | `/v1/products` | Элемент ИБ + `ProductTable` по `xml_id` |
+| GET | `/v1/orders` | Заказ(ы) Bitrix: список, фильтр по `status_id`, поиск по `order_xml_id` / `order_id` |
+| POST | `/v1/orders/status` | Импорт статусов заказов из 1С (`order_xml_id`/`order_id`, `status_code_1c`, опционально `paid`, `allow_delivery`, `deducted`) |
+
+**POST `/v1/stocks` / `/v1/stocks/import`, POST `/v1/prices` и POST `/v1/orders/status` — важное поведение:**
+
+- Каждая строка `items` теперь либо применяется, либо попадает в `failed` / `errors[]` с причиной. Некорректные строки больше не отбрасываются молча на этапе нормализации.
+- Если в каталоге найдено несколько элементов с одним и тем же `XML_ID`, такая строка не импортируется и возвращается ошибка по позиции.
+- Для заказов поиск идёт по `order_xml_id` или `order_id`; при дубле `XML_ID` заказа строка считается ошибочной.
+- Для успешного HTTP-ответа `200` ориентируйтесь на поля `updated`, `failed`, `no_change`, `results`, `errors`, `errors_truncated`, а не только на код ответа.
 
 **GET `/v1/stocks` — поля JSON:**
 
@@ -80,10 +111,11 @@ curl -sS -G "https://example.ru/local/tools/as_onec_api.php" \
 
 ## Features
 
-- Versioned JSON API (`JsonApiKernel`): stocks, prices, products; single canonical `as_onec_api.php`.
+- Versioned JSON API (`JsonApiKernel`): stocks, prices, products, orders; single canonical `as_onec_api.php`.
+- Versioned JSON API (`JsonApiKernel`): order read plus order status import from 1C.
 - Bitrix **`rest`** module not required for this contour.
 - Limits and lazy-load details: [Critical behavior](#critical-behavior).
-- Batch processing, body size limits, optional default store ID.
+- Batch processing, body size limits, per-item validation with explicit errors, optional default store ID, optional order status mapping and transition policy.
 - Optional: `public/http_stocks_import.php` after `prolog` for tests or a thin proxy.
 
 ## Requirements
@@ -128,8 +160,10 @@ If `local/tools/as_onec_api.php` already exists (e.g. from an older setup), comp
    **`PARTNER_NAME`** / **`PARTNER_URI`** in `install/index.php` point to the author / repository.
 
 3. Point your 1C (or other client) to **`POST`** **`/local/tools/as_onec_api.php?path=/v1/stocks/import`** (or `public/http_import.php` if you need a fixed path without `path=`) with the JSON contract in `stock_import_engine.php`. Configure **`ONEC_STOCK_IMPORT_ACCESS_KEY`** (or module settings) in `local/php_interface/include/config.php`.
-
-4. Site-specific secrets — **do not commit production keys**.
+4. To read orders from the module itself, use **`GET /local/tools/as_onec_api.php?path=/v1/orders`** with `X-Stock-Import-Key` (or `access_key` in query). Optional query params: `order_xml_id`, `order_id`, `status_id`, `page`, `items_per_page`.
+5. For order statuses use **`POST /local/tools/as_onec_api.php?path=/v1/orders/status`**. By default the incoming `status_code_1c` is treated as the target `STATUS_ID` Bitrix; for external codes from 1С configure JSON mapping in module settings.
+6. If 1С must also control payment/shipment flags, explicitly enable this in module settings (`order_status_sync_payment`, `order_status_sync_shipment`) or via matching constants/options.
+7. Site-specific secrets — **do not commit production keys**.
 
 On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescription`** handlers in the database (if the **rest** module is installed).
 
@@ -148,8 +182,74 @@ On upgrade to **1.0.6+**, the module clears legacy **`OnRestServiceBuildDescript
 ## Scaling and operations
 
 - Tune **limits** via module settings or `ONEC_STOCK_IMPORT_MAX_ITEMS`, `ONEC_STOCK_IMPORT_MAX_BODY_BYTES`, `ONEC_STOCK_IMPORT_BATCH_SIZE` in `config.php`.
+- For order status sync you can configure JSON mapping and allowed transitions in module settings: `order_status_map_json`, `order_status_allowed_transitions_json`.
 - **Heavy load:** prefer fewer large batches within limits; PHP-FPM timeouts and memory; optional queue in front of the endpoint.
 - **Observability:** log files under `upload/logs/` when logging is enabled in the engine; monitor HTTP 413/401 rates from the reverse proxy.
+
+## Orders status API
+
+### GET `/v1/orders`
+
+Контур чтения заказов теперь вынесен в модуль и может использоваться вместо прямой зависимости от legacy-скрипта `orders_export_to_1c.php`.
+
+Поддерживаются query-параметры:
+
+- `order_xml_id` или `order_id` для чтения одного заказа;
+- `status_id` для фильтрации списка;
+- `page`, `items_per_page` для пагинации списка;
+- `order_xml_id_like` для отбора по части внешнего кода заказа.
+
+Возвращаются:
+
+- базовые поля заказа (`id`, `xml_id`, `price`, `currency`, `status_id`, `status_name`, `payed`, `canceled`);
+- агрегированные флаги `allow_delivery` / `deducted`;
+- свойства заказа как словарь `properties`;
+- позиции заказа `items`;
+- детали оплат `payments` и отгрузок `shipments`;
+- `pickup` и `order_description` для совместимости с существующим контуром обмена.
+
+### POST `/v1/orders/status`
+
+Минимальный контракт:
+
+```json
+{
+  "items": [
+    {
+      "order_xml_id": "ORDER-XML-ID",
+      "status_code_1c": "P",
+      "event_at": "2026-04-21 10:30:00",
+      "comment": "Оплачен в 1С"
+    }
+  ]
+}
+```
+
+Поддерживаются:
+
+- `order_xml_id` или `order_id` для поиска заказа;
+- `status_code_1c` / `status_code` / `status` / `event_code` как входящий код статуса;
+- опционально `paid`, `allow_delivery`, `deducted`;
+- опционально `event_at`, если нужно проставлять даты оплаты/отгрузки.
+
+Поведение:
+
+- если JSON-мэппинг не задан, модуль трактует входящий код как целевой `STATUS_ID` Bitrix;
+- если статус уже установлен и дополнительные флаги не меняются, запись идёт в `no_change`;
+- если заказ отменён, смена статуса блокируется без отдельной политики;
+- если заданы `order_status_allowed_transitions_json`, API проверяет разрешённые переходы;
+- изменение оплаты и отгрузки выполняется только при включённых опциях модуля;
+- в `results[]` возвращаются успешные и `no_change`-результаты по строкам, чтобы 1С могла разбирать итог без чтения логов;
+- входной `comment` попадает в интеграционный лог, но не записывается в `USER_DESCRIPTION`, чтобы не портить пользовательский комментарий в личном кабинете.
+
+## Stocks API: что важно для интеграции
+
+- При `inventory_management=false` эндпоинт `GET /v1/stocks` возвращает одно поле `quantity`, и импорт обновляет `ProductTable.QUANTITY`.
+- При `inventory_management=true` чтение возвращает `stores[]`, `quantity_total` и `catalog_quantity`; для сверки по складам ориентируйтесь на `stores[]` и `quantity_total`, а для витрины и карточки товара проверяйте `catalog_quantity`.
+- В режиме складского учёта для записи нужен склад: `store_id`, либо `store_xml_id` / `store_code`, либо настроенный `default_store_id`.
+- `store_xml_id` умеет резолвиться не только в `b_catalog_store.XML_ID` / `CODE`, но и через значение списка `MESTO_KHRANENIYA` у ТП, если в проекте этот контур используется.
+- Значение `amount` не может быть отрицательным; `0` является валидным значением и означает обнуление остатка.
+- Успешный HTTP `200` для импортов не гарантирует, что все строки применились: итог всегда проверяется по `updated`, `failed`, `errors[]`, `errors_truncated`.
 
 ## Troubleshooting
 

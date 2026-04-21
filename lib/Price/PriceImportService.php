@@ -74,7 +74,7 @@ final class PriceImportService
             ];
         }
 
-        $items = self::normalizeItems($decoded);
+        $items = asStockImportFrom1cExtractItems($decoded);
         if ($items === null) {
             return [
                 'http_code' => 400,
@@ -117,7 +117,23 @@ final class PriceImportService
 
                 foreach ($batch as $idx => $row) {
                     $globalIndex = $batchIndex * $batchSize + $idx;
-                    $r = self::applyRow($row, $catalogIblockIds);
+                    $validated = self::validateItem($row);
+                    if (!$validated['ok']) {
+                        $summary['failed']++;
+                        if (count($summary['errors']) < 200) {
+                            $summary['errors'][] = [
+                                'index' => $globalIndex,
+                                'product_xml_id' => is_array($row) ? ($row['product_xml_id'] ?? $row['xml_id'] ?? $row['XML_ID'] ?? null) : null,
+                                'product_id' => is_array($row) ? ($row['product_id'] ?? null) : null,
+                                'catalog_group_id' => is_array($row) ? ($row['catalog_group_id'] ?? $row['price_type_id'] ?? $row['CATALOG_GROUP_ID'] ?? null) : null,
+                                'message' => $validated['message'],
+                            ];
+                        }
+                        continue;
+                    }
+
+                    $normalizedRow = $validated['row'];
+                    $r = self::applyRow($normalizedRow, $catalogIblockIds);
                     if ($r['ok']) {
                         $summary['updated']++;
                     } else {
@@ -125,9 +141,9 @@ final class PriceImportService
                         if (count($summary['errors']) < 200) {
                             $summary['errors'][] = [
                                 'index' => $globalIndex,
-                                'product_xml_id' => $row['product_xml_id'] ?? null,
-                                'product_id' => $row['product_id'] ?? null,
-                                'catalog_group_id' => $row['catalog_group_id'] ?? null,
+                                'product_xml_id' => $normalizedRow['product_xml_id'] ?? null,
+                                'product_id' => $normalizedRow['product_id'] ?? null,
+                                'catalog_group_id' => $normalizedRow['catalog_group_id'] ?? null,
                                 'message' => $r['message'],
                             ];
                         }
@@ -137,6 +153,10 @@ final class PriceImportService
                 $connection->commitTransaction();
             } catch (\Throwable $e) {
                 $connection->rollbackTransaction();
+                asStockImportFrom1cLog('price_batch_exception', [
+                    'batch' => $batchIndex,
+                    'message' => $e->getMessage(),
+                ]);
 
                 return [
                     'http_code' => 500,
@@ -156,6 +176,11 @@ final class PriceImportService
             $summary['errors_truncated'] = true;
         }
 
+        asStockImportFrom1cLog('price_import_done', [
+            'updated' => $summary['updated'],
+            'failed' => $summary['failed'],
+        ]);
+
         return [
             'http_code' => 200,
             'data' => $summary,
@@ -168,70 +193,95 @@ final class PriceImportService
      */
     private static function normalizeItems($decoded): ?array
     {
-        if (is_array($decoded) && array_keys($decoded) !== range(0, count($decoded) - 1)) {
-            if (!isset($decoded['items']) || !is_array($decoded['items'])) {
-                return null;
-            }
-            $items = $decoded['items'];
-        } elseif (is_array($decoded)) {
-            $items = $decoded;
-        } else {
-            return null;
-        }
-
-        if ($items === []) {
+        $items = asStockImportFrom1cExtractItems($decoded);
+        if ($items === null) {
             return null;
         }
 
         $out = [];
         foreach ($items as $row) {
-            if (!is_array($row)) {
+            $validated = self::validateItem($row);
+            if (!$validated['ok']) {
                 continue;
             }
 
-            $xml =
-                $row['product_xml_id']
-                ?? $row['xml_id']
-                ?? $row['XML_ID']
-                ?? '';
-            $xml = is_string($xml) ? trim($xml) : '';
+            $out[] = $validated['row'];
+        }
 
-            $pid = isset($row['product_id']) ? (int) $row['product_id'] : 0;
+        return $out === [] ? null : $out;
+    }
 
-            $gid = $row['catalog_group_id'] ?? $row['price_type_id'] ?? $row['CATALOG_GROUP_ID'] ?? null;
-            $gid = is_numeric($gid) ? (int) $gid : 0;
+    /**
+     * @param mixed $row
+     * @return array{ok:true,row:array<string,mixed>}|array{ok:false,message:string}
+     */
+    private static function validateItem($row): array
+    {
+        if (!is_array($row)) {
+            return ['ok' => false, 'message' => 'Позиция должна быть объектом JSON.'];
+        }
 
-            $price = $row['price'] ?? null;
-            if ($price === null || !is_numeric($price)) {
-                continue;
+        $xml =
+            $row['product_xml_id']
+            ?? $row['xml_id']
+            ?? $row['XML_ID']
+            ?? '';
+        $xml = is_string($xml) ? trim($xml) : '';
+
+        $pid = 0;
+        if (array_key_exists('product_id', $row) && $row['product_id'] !== '' && $row['product_id'] !== null) {
+            if (!is_numeric($row['product_id'])) {
+                return ['ok' => false, 'message' => 'Поле product_id должно быть числом.'];
             }
-            $price = (float) $price;
-            if ($price < 0) {
-                continue;
+            $pid = (int) $row['product_id'];
+            if ($pid <= 0) {
+                return ['ok' => false, 'message' => 'Поле product_id должно быть положительным числом.'];
             }
+        }
 
-            $currency = isset($row['currency']) ? trim((string) $row['currency']) : '';
-            if ($currency === '') {
-                $currency = 'RUB';
-            }
+        $gid = $row['catalog_group_id'] ?? $row['price_type_id'] ?? $row['CATALOG_GROUP_ID'] ?? null;
+        if ($gid === null || $gid === '') {
+            return ['ok' => false, 'message' => 'Поле catalog_group_id обязательно.'];
+        }
+        if (!is_numeric($gid)) {
+            return ['ok' => false, 'message' => 'Поле catalog_group_id должно быть числом.'];
+        }
+        $gid = (int) $gid;
+        if ($gid <= 0) {
+            return ['ok' => false, 'message' => 'Поле catalog_group_id должно быть положительным числом.'];
+        }
 
-            if ($pid <= 0 && $xml === '') {
-                continue;
-            }
-            if ($gid <= 0) {
-                continue;
-            }
+        $price = $row['price'] ?? null;
+        if ($price === null || $price === '') {
+            return ['ok' => false, 'message' => 'Поле price обязательно.'];
+        }
+        if (!is_numeric($price)) {
+            return ['ok' => false, 'message' => 'Поле price должно быть числом.'];
+        }
+        $price = (float) $price;
+        if ($price < 0) {
+            return ['ok' => false, 'message' => 'Поле price не может быть отрицательным.'];
+        }
 
-            $out[] = [
+        $currency = isset($row['currency']) ? trim((string) $row['currency']) : '';
+        if ($currency === '') {
+            $currency = 'RUB';
+        }
+
+        if ($pid <= 0 && $xml === '') {
+            return ['ok' => false, 'message' => 'Нужен product_id или product_xml_id/xml_id/XML_ID.'];
+        }
+
+        return [
+            'ok' => true,
+            'row' => [
                 'product_xml_id' => $xml,
                 'product_id' => $pid,
                 'catalog_group_id' => $gid,
                 'price' => $price,
                 'currency' => $currency,
-            ];
-        }
-
-        return $out === [] ? null : $out;
+            ],
+        ];
     }
 
     /**
@@ -244,11 +294,11 @@ final class PriceImportService
         $productId = (int) ($row['product_id'] ?? 0);
         if ($productId <= 0) {
             $xml = (string) ($row['product_xml_id'] ?? '');
-            $resolved = asStockImportFrom1cResolveElementIdByXml($xml, $catalogIblockIds);
-            if ($resolved <= 0) {
-                return ['ok' => false, 'message' => 'Элемент с указанным XML_ID не найден в каталоге.'];
+            $resolved = asStockImportFrom1cResolveElementByXml($xml, $catalogIblockIds);
+            if (!$resolved['ok']) {
+                return ['ok' => false, 'message' => $resolved['message']];
             }
-            $productId = $resolved;
+            $productId = $resolved['id'];
         }
 
         $productRow = ProductTable::getList([
