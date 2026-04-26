@@ -84,7 +84,7 @@ final class ImportService
             }
         }
 
-        $items = asStockImportFrom1cNormalizeItems($decoded);
+        $items = asStockImportFrom1cExtractItems($decoded);
         if ($items === null) {
             return [
                 'http_code' => 400,
@@ -122,16 +122,30 @@ final class ImportService
 
         $batches = array_chunk($items, $batchSize);
         $connection = Application::getConnection();
+        $productIdsForRecalc = [];
 
         foreach ($batches as $batchIndex => $batch) {
-            $productIdsForRecalc = [];
-
             try {
                 $connection->startTransaction();
 
                 foreach ($batch as $idx => $row) {
                     $globalIndex = $batchIndex * $batchSize + $idx;
-                    $r = asStockImportFrom1cApplyRow($row, $useStores, $catalogIblockIds);
+                    $validated = asStockImportFrom1cValidateItem($row);
+                    if (!$validated['ok']) {
+                        $summary['failed']++;
+                        if (count($summary['errors']) < 200) {
+                            $summary['errors'][] = [
+                                'index' => $globalIndex,
+                                'product_xml_id' => is_array($row) ? ($row['product_xml_id'] ?? $row['xml_id'] ?? $row['XML_ID'] ?? null) : null,
+                                'product_id' => is_array($row) ? ($row['product_id'] ?? null) : null,
+                                'message' => $validated['message'],
+                            ];
+                        }
+                        continue;
+                    }
+
+                    $normalizedRow = $validated['row'];
+                    $r = asStockImportFrom1cApplyRow($normalizedRow, $useStores, $catalogIblockIds);
                     if ($r['ok']) {
                         $summary['updated']++;
                         if (!empty($r['product_id'])) {
@@ -142,8 +156,8 @@ final class ImportService
                         if (count($summary['errors']) < 200) {
                             $summary['errors'][] = [
                                 'index' => $globalIndex,
-                                'product_xml_id' => $row['product_xml_id'] ?? null,
-                                'product_id' => $row['product_id'] ?? null,
+                                'product_xml_id' => $normalizedRow['product_xml_id'] ?? null,
+                                'product_id' => $normalizedRow['product_id'] ?? null,
                                 'message' => $r['message'],
                             ];
                         }
@@ -151,13 +165,6 @@ final class ImportService
                 }
 
                 $connection->commitTransaction();
-
-                if ($useStores && $productIdsForRecalc !== []) {
-                    /**
-                     * @todo Заменить на проверенный D7-аналог при появлении в ядре и тестах паритета агрегированных остатков.
-                     */
-                    \CCatalogStore::recalculateProductsBalances(array_map('intval', array_keys($productIdsForRecalc)));
-                }
             } catch (\Throwable $e) {
                 $connection->rollbackTransaction();
                 asStockImportFrom1cLog('batch_exception', [
@@ -175,6 +182,15 @@ final class ImportService
                     ],
                 ];
             }
+        }
+
+        if ($useStores && $productIdsForRecalc !== []) {
+            /**
+             * Пересчитываем агрегаты один раз на весь запрос, чтобы не дёргать каталог после каждого батча.
+             *
+             * @todo Заменить на проверенный D7-аналог при появлении в ядре и тестах паритета агрегированных остатков.
+             */
+            \CCatalogStore::recalculateProductsBalances(array_map('intval', array_keys($productIdsForRecalc)));
         }
 
         if (!$useStores) {
