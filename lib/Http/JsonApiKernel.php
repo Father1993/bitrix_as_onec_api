@@ -7,6 +7,8 @@ use As\OnecApi\Order\OrderStatusImportService;
 use As\OnecApi\Price\PriceImportService;
 use As\OnecApi\Price\PriceReadService;
 use As\OnecApi\Product\ProductReadService;
+use As\OnecApi\Store\StoreReadService;
+use As\OnecApi\Store\StoreWriteService;
 use As\OnecApi\Stock\ImportService;
 use As\OnecApi\Stock\StockReadService;
 
@@ -33,6 +35,8 @@ final class JsonApiKernel
             ['GET', '/v1/products', [$this, 'handleGetProducts']],
             ['GET', '/v1/orders', [$this, 'handleGetOrders']],
             ['POST', '/v1/orders/status', [$this, 'handlePostOrderStatuses']],
+            ['GET', '/v1/stores', [$this, 'handleGetStores']],
+            ['POST', '/v1/stores', [$this, 'handlePostStores']],
         ];
     }
 
@@ -54,7 +58,7 @@ final class JsonApiKernel
             [
                 'ok' => false,
                 'error' => 'NOT_FOUND',
-                'message' => 'Неизвестный маршрут API. См. документацию: GET/POST path=/v1/stocks, /v1/stocks/import, /v1/prices, /v1/products, GET /v1/orders, POST /v1/orders/status.',
+                'message' => 'Неизвестный маршрут API. См. документацию: GET/POST path=/v1/stocks, /v1/stocks/import, /v1/prices, /v1/products, GET /v1/orders, POST /v1/orders/status, GET/POST /v1/stores.',
             ]
         );
     }
@@ -166,6 +170,23 @@ final class JsonApiKernel
         $xmlId = isset($_GET['xml_id']) ? (string) $_GET['xml_id'] : '';
         $result = ProductReadService::queryByXmlId($xmlId);
         JsonResponse::send($result['http_code'], $result['data']);
+    }
+
+    private function handleGetStores(): void
+    {
+        $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
+        if (!$this->authorizeGetOr401($queryKey)) {
+            return;
+        }
+
+        $result = StoreReadService::query($_GET);
+        JsonResponse::send($result['http_code'], $result['data']);
+    }
+
+    private function handlePostStores(): void
+    {
+        $result = StoreWriteService::run();
+        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
     }
 
     private function handlePostOrderStatuses(): void

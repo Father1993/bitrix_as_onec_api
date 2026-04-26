@@ -35,6 +35,7 @@ flowchart LR
 | Импорт остатков (строки, склады, ORM, валидация по строкам) | [include/stock_import_engine.php](include/stock_import_engine.php); обёртка [lib/Stock/ImportService.php](lib/Stock/ImportService.php) |
 | Импорт цен (валидация по строкам, логирование батчей) | [lib/Price/PriceImportService.php](lib/Price/PriceImportService.php) |
 | Импорт статусов заказов 1С -> Bitrix | `lib/Order/OrderStatusImportService.php`, `lib/Order/OrderResolver.php`, `lib/Order/OrderStatusMapper.php`, `lib/Order/StatusTransitionValidator.php` |
+| Справочник складов (чтение / запись) | [lib/Store/StoreReadService.php](lib/Store/StoreReadService.php), [lib/Store/StoreWriteService.php](lib/Store/StoreWriteService.php) |
 | Чтение остатков / цен / товара / заказов | [lib/Stock/StockReadService.php](lib/Stock/StockReadService.php), [lib/Price/PriceReadService.php](lib/Price/PriceReadService.php), [lib/Product/ProductReadService.php](lib/Product/ProductReadService.php), `lib/Order/OrderReadService.php` |
 | Лимиты и опции модуля | [lib/StockImportOptions.php](lib/StockImportOptions.php), [options.php](options.php) |
 | Установка / синхрон версии | [install/index.php](install/index.php), [lib/Installer.php](lib/Installer.php) |
@@ -78,7 +79,7 @@ flowchart LR
 
 ## Чеклист регрессии после правок
 
-- Маршруты и параметры из [README.md](README.md): `path=/v1/stocks`, `/v1/stocks/import`, `/v1/prices`, `/v1/products`, `/v1/orders`, `/v1/orders/status`.
+- Маршруты и параметры из [README.md](README.md): `path=/v1/stocks`, `/v1/stocks/import`, `/v1/prices`, `/v1/products`, `/v1/orders`, `/v1/orders/status`, `GET/POST /v1/stores`.
 - POST импорт остатков и цен: лимиты тела, авторизация ключом / `login`+`password` (только POST).
 - GET с `access_key` в query или ключом в заголовке.
 - Настройки модуля: права `>= W` на запись; сценарии из README (sessid намеренно не проверяется в форме).

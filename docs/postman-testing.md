@@ -2,7 +2,7 @@
 
 Краткая шпаргалка для ручной проверки эндпоинтов [`JsonApiKernel`](../lib/http/jsonapikernel.php). Полное описание контрактов и curl — в [`ADEV/stocks-import-from-1c-testing.md`](../../../ADEV/stocks-import-from-1c-testing.md).
 
-Если нужен отдельный понятный документ именно по складам для 1С-программиста, используйте [stocks-api-for-1c-postman.md](stocks-api-for-1c-postman.md).
+Если нужен отдельный понятный документ именно по **остаткам** и складам в обмене, используйте [stocks-api-for-1c-postman.md](stocks-api-for-1c-postman.md) и [1c-ostatki-api-rukovodstvo-postman.md](1c-ostatki-api-rukovodstvo-postman.md). **Справочник складов (чтение/создание/редактирование):** [stores-api-postman.md](stores-api-postman.md).
 
 ## Переменные окружения Postman
 
@@ -83,6 +83,15 @@
 - `updated` / `failed` отражают итог по всем строкам `items`;
 - `errors[]` содержит причины по битым позициям;
 - при дубле `XML_ID` строка не импортируется и попадает в `errors[]`.
+
+---
+
+## 4a. Склады — `GET/POST /v1/stores`
+
+- **GET:** `{{base_url}}?path=/v1/stores` (список активных), `…&include_inactive=1`, или один склад: `&store_id=1` / `&store_xml_id=…` / `&code=…`
+- **POST:** `{{base_url}}?path=/v1/stores` — пакет `items` (как остатки/цены), тот же ключ.
+
+Поля, примеры и правила upsert: [stores-api-postman.md](stores-api-postman.md).
 
 ---
 

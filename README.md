@@ -7,7 +7,7 @@
 
 **Source code:** [github.com/Father1993/bitrix_as_onec_api](https://github.com/Father1993/bitrix_as_onec_api) — canonical repository for this module (`MODULE_ID` **`as.onec_api`**).  
 **Manual API checks (Postman):** [docs/postman-testing.md](docs/postman-testing.md).  
-**Склады для 1С-программиста:** [docs/stocks-api-for-1c-postman.md](docs/stocks-api-for-1c-postman.md).  
+**Склады для 1С-программиста:** [docs/stocks-api-for-1c-postman.md](docs/stocks-api-for-1c-postman.md), справочник складов (GET/POST): [docs/stores-api-postman.md](docs/stores-api-postman.md).  
 **Доработка архитектуры / карта файлов для ИИ:** [EXTENSION.md](EXTENSION.md).
 
 | | |
@@ -84,8 +84,10 @@
 | GET | `/v1/products` | Элемент ИБ + `ProductTable` по `xml_id` |
 | GET | `/v1/orders` | Заказ(ы) Bitrix: список, фильтр по `status_id`, поиск по `order_xml_id` / `order_id` |
 | POST | `/v1/orders/status` | Импорт статусов заказов из 1С (`order_xml_id`/`order_id`, `status_code_1c`, опционально `paid`, `allow_delivery`, `deducted`) |
+| GET | `/v1/stores` | Справочник складов (`b_catalog_store`): список или один склад по `store_id` / `store_xml_id` / `code` (см. [docs/stores-api-postman.md](docs/stores-api-postman.md)) |
+| POST | `/v1/stores` | Создание/обновление складов (пакет `items`, как цены/остатки) |
 
-**POST `/v1/stocks` / `/v1/stocks/import`, POST `/v1/prices` и POST `/v1/orders/status` — важное поведение:**
+**POST `/v1/stocks` / `/v1/stocks/import`, POST `/v1/prices`, POST `/v1/orders/status` и POST `/v1/stores` — важное поведение:**
 
 - Каждая строка `items` теперь либо применяется, либо попадает в `failed` / `errors[]` с причиной. Некорректные строки больше не отбрасываются молча на этапе нормализации.
 - Если в каталоге найдено несколько элементов с одним и тем же `XML_ID`, такая строка не импортируется и возвращается ошибка по позиции.
@@ -111,7 +113,7 @@ curl -sS -G "https://example.ru/local/tools/as_onec_api.php" \
 
 ## Features
 
-- Versioned JSON API (`JsonApiKernel`): stocks, prices, products, orders; single canonical `as_onec_api.php`.
+- Versioned JSON API (`JsonApiKernel`): stocks, prices, products, stores (read + write), orders; single canonical `as_onec_api.php`.
 - Versioned JSON API (`JsonApiKernel`): order read plus order status import from 1C.
 - Bitrix **`rest`** module not required for this contour.
 - Limits and lazy-load details: [Critical behavior](#critical-behavior).
