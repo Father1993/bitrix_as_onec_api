@@ -21,3 +21,4 @@ composer.lock
 # Bitrix cache (if ever copied into tree)
 bitrix/cache/
 bitrix/managed_cache/
+/install/tool/force_instal.php
