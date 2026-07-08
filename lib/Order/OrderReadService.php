@@ -387,7 +387,7 @@ final class OrderReadService
             case 'Южно-Сахалинск':
                 return '693012, г. Южно-Сахалинск, проспект Мира 2Б/8';
             case 'Благовещенск':
-                return '675520 Амурская область, Благовещенский район, с. Чигири, четвертый км Новотроицкого шоссе, д. 10';
+                return (string) ($GLOBALS['PICKUP_ADDRESSES']['blg'] ?? '');
             default:
                 return '';
         }
