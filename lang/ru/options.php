@@ -8,6 +8,7 @@ $MESS['AS_ONEC_API_OPTIONS_AUDIT_HINT'] =
     'Показываются последние 200 POST-запросов: остатки, цены, склады и статусы заказов. Ключи API и тела запросов не сохраняются.';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_EMPTY'] = 'Записей пока нет. Журнал появится после первого POST-запроса 1С.';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_AT'] = 'Время';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_REQUEST_ID'] = 'ID запроса';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_OPERATION'] = 'Операция';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_RESULT'] = 'Результат';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_COUNTS'] = 'Счётчики';
