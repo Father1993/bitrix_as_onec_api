@@ -56,10 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'clear
     }
 }
 
-$navigation = (new PageNavigation('as_onec_api_audit_nav'))
-    ->allowAllRecords(false)
-    ->setPageSize(50)
-    ->initFromUri();
+$navigation = new PageNavigation('as_onec_api_audit_nav');
+$navigation->allowAllRecords(false);
+$navigation->setPageSize(50);
+$navigation->initFromUri();
 $navigation->setRecordCount(AuditService::count($filter));
 $records = AuditService::find($filter, $navigation->getLimit(), $navigation->getOffset());
 $rows = [];
