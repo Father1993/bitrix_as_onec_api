@@ -37,6 +37,7 @@ final class JsonApiKernel
             ['POST', '/v1/orders/status', [$this, 'handlePostOrderStatuses']],
             ['GET', '/v1/stores', [$this, 'handleGetStores']],
             ['POST', '/v1/stores', [$this, 'handlePostStores']],
+            ['GET', '/v1/audit/requests', [$this, 'handleGetAuditRequests']],
         ];
     }
 
@@ -128,7 +129,7 @@ final class JsonApiKernel
     private function handlePostStocksImport(): void
     {
         $result = ImportService::run();
-        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+        $this->sendMutationResult('stocks_import', $result);
     }
 
     private function handleGetPrices(): void
@@ -146,7 +147,7 @@ final class JsonApiKernel
     private function handlePostPrices(): void
     {
         $result = PriceImportService::run();
-        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+        $this->sendMutationResult('prices_import', $result);
     }
 
     private function handleGetOrders(): void
@@ -186,12 +187,40 @@ final class JsonApiKernel
     private function handlePostStores(): void
     {
         $result = StoreWriteService::run();
-        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+        $this->sendMutationResult('stores_write', $result);
     }
 
     private function handlePostOrderStatuses(): void
     {
         $result = OrderStatusImportService::run();
-        JsonResponse::send($result['http_code'], JsonResponse::withApiVersion($result['data']));
+        $this->sendMutationResult('orders_status_import', $result);
+    }
+
+    private function handleGetAuditRequests(): void
+    {
+        $queryKey = isset($_GET['access_key']) ? (string) $_GET['access_key'] : null;
+        if (!$this->authorizeGetOr401($queryKey)) {
+            return;
+        }
+
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int) $_GET['limit'] : 200;
+        JsonResponse::send(200, [
+            'ok' => true,
+            'requests' => RequestAuditLog::read($limit),
+        ]);
+    }
+
+    /**
+     * @param array{http_code:int,data:array<string,mixed>} $result
+     */
+    private function sendMutationResult(string $operation, array $result): void
+    {
+        $data = JsonResponse::withApiVersion($result['data']);
+        $requestId = RequestAuditLog::record($operation, $result);
+        if ($requestId !== null) {
+            $data['request_id'] = $requestId;
+        }
+
+        JsonResponse::send($result['http_code'], $data);
     }
 }
