@@ -16,7 +16,6 @@ use Bitrix\Main\Config\Option;
 use Bitrix\Main\HttpApplication;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
-use As\OnecApi\Http\RequestAuditLog;
 
 /** @global CMain $APPLICATION */
 
@@ -48,6 +47,8 @@ $arTextOptions = [
     ['id' => 'batch_size', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_BATCH_SIZE'), 'size' => 12],
     ['id' => 'max_body_bytes', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_MAX_BODY_BYTES'), 'size' => 12],
     ['id' => 'default_store_id', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_DEFAULT_STORE_ID'), 'size' => 12],
+    ['id' => 'audit_retention_days', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_RETENTION_DAYS'), 'size' => 12],
+    ['id' => 'audit_max_records', 'label' => Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_MAX_RECORDS'), 'size' => 12],
 ];
 
 /** @var list<array{id: string, label: string, rows: int}> */
@@ -67,6 +68,8 @@ $validatePosted = static function (array $posted): ?string {
     $batchSize = $posted['batch_size'] ?? '';
     $maxBody = $posted['max_body_bytes'] ?? '';
     $defStore = $posted['default_store_id'] ?? '';
+    $auditRetentionDays = $posted['audit_retention_days'] ?? '';
+    $auditMaxRecords = $posted['audit_max_records'] ?? '';
 
     if ($maxItems !== '' && (!ctype_digit($maxItems) || (int) $maxItems < 1)) {
         return Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_MAX_ITEMS');
@@ -79,6 +82,12 @@ $validatePosted = static function (array $posted): ?string {
     }
     if ($defStore !== '' && (!ctype_digit($defStore) || (int) $defStore < 0)) {
         return Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_DEFAULT_STORE_ID');
+    }
+    if ($auditRetentionDays !== '' && (!ctype_digit($auditRetentionDays) || (int) $auditRetentionDays < 1)) {
+        return Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_AUDIT_RETENTION_DAYS');
+    }
+    if ($auditMaxRecords !== '' && (!ctype_digit($auditMaxRecords) || (int) $auditMaxRecords < 1000)) {
+        return Loc::getMessage('AS_ONEC_API_OPTIONS_ERR_AUDIT_MAX_RECORDS');
     }
 
     foreach (['order_status_map_json', 'order_status_allowed_transitions_json'] as $jsonField) {
@@ -102,12 +111,16 @@ $normalizeForSave = static function (array $posted): array {
     $batchSize = trim((string) ($posted['batch_size'] ?? ''));
     $maxBody = trim((string) ($posted['max_body_bytes'] ?? ''));
     $defStore = trim((string) ($posted['default_store_id'] ?? ''));
+    $auditRetentionDays = trim((string) ($posted['audit_retention_days'] ?? ''));
+    $auditMaxRecords = trim((string) ($posted['audit_max_records'] ?? ''));
 
     return [
         'max_items' => $maxItems === '' ? '' : (string) max(1, (int) $maxItems),
         'batch_size' => $batchSize === '' ? '' : (string) max(1, (int) $batchSize),
         'max_body_bytes' => $maxBody === '' ? '' : (string) max(1024, (int) $maxBody),
         'default_store_id' => $defStore === '' ? '' : (string) max(0, (int) $defStore),
+        'audit_retention_days' => $auditRetentionDays === '' ? '' : (string) max(1, (int) $auditRetentionDays),
+        'audit_max_records' => $auditMaxRecords === '' ? '' : (string) max(1000, (int) $auditMaxRecords),
         'order_status_map_json' => trim((string) ($posted['order_status_map_json'] ?? '')),
         'order_status_allowed_transitions_json' => trim((string) ($posted['order_status_allowed_transitions_json'] ?? '')),
         'order_status_sync_payment' => !empty($posted['order_status_sync_payment']) ? 'Y' : 'N',
@@ -128,6 +141,8 @@ if ($request->isPost() && $canWrite) {
                 'batch_size',
                 'max_body_bytes',
                 'default_store_id',
+                'audit_retention_days',
+                'audit_max_records',
                 'order_status_map_json',
                 'order_status_allowed_transitions_json',
                 'order_status_sync_payment',
@@ -200,8 +215,6 @@ $aTabs = [
     ],
 ];
 
-$auditRows = RequestAuditLog::read(200);
-
 $tabControl = new CAdminTabControl('tabControl', $aTabs);
 ?>
 <form method="post" action="<?= htmlspecialcharsbx($formAction) ?>">
@@ -249,64 +262,8 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
     ?>
     <tr>
         <td colspan="2">
-            <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_HINT')) ?>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="2">
-            <?php if ($auditRows === []) { ?>
-                <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_EMPTY')) ?>
-            <?php } else { ?>
-                <table class="adm-list-table" style="width: 100%;">
-                    <thead>
-                    <tr class="adm-list-table-header">
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_AT')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_REQUEST_ID')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_OPERATION')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_RESULT')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_COUNTS')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_DETAILS')) ?></td>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($auditRows as $row) {
-                        $errors = isset($row['errors']) && is_array($row['errors']) ? $row['errors'] : [];
-                        $counts = array_filter([
-                            'total' => $row['total'] ?? null,
-                            'updated' => $row['updated'] ?? null,
-                            'failed' => $row['failed'] ?? null,
-                            'no_change' => $row['no_change'] ?? null,
-                        ], static fn ($value): bool => $value !== null);
-                        $detailPayload = array_filter([
-                            'request_id' => $row['request_id'] ?? null,
-                            'client_ip' => $row['client_ip'] ?? null,
-                            'request' => $row['request'] ?? null,
-                            'response' => $row['response'] ?? null,
-                            'errors' => $errors,
-                            'details_truncated' => $row['details_truncated'] ?? null,
-                        ], static fn ($value): bool => $value !== null && $value !== []);
-                        $detailJson = json_encode(
-                            $detailPayload,
-                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
-                        ) ?: '';
-                        ?>
-                    <tr class="adm-list-table-row">
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['at'] ?? '')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['request_id'] ?? '')) ?></td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['operation'] ?? '')) ?></td>
-                        <td class="adm-list-table-cell"><?= !empty($row['ok']) ? 'OK' : 'ERROR' ?> (HTTP <?= (int) ($row['http_code'] ?? 0) ?>)</td>
-                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(json_encode($counts, JSON_UNESCAPED_UNICODE) ?: '') ?></td>
-                        <td class="adm-list-table-cell">
-                            <details>
-                                <summary><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_SHOW_DETAILS', ['#COUNT#' => count($errors)])) ?></summary>
-                                <pre style="max-width: 680px; max-height: 360px; overflow: auto; white-space: pre-wrap;"><?= htmlspecialcharsbx($detailJson) ?></pre>
-                            </details>
-                        </td>
-                    </tr>
-                    <?php } ?>
-                    </tbody>
-                </table>
-            <?php } ?>
+            <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_HINT')) ?><br>
+            <a href="/bitrix/admin/as_onec_api_audit.php?lang=<?= urlencode(LANGUAGE_ID) ?>"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_OPEN')) ?></a>
         </td>
     </tr>
     <?php

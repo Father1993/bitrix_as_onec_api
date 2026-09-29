@@ -2,6 +2,7 @@
 
 namespace As\OnecApi\Http;
 
+use As\OnecApi\Audit\AuditService;
 use As\OnecApi\Order\OrderReadService;
 use As\OnecApi\Order\OrderStatusImportService;
 use As\OnecApi\Price\PriceImportService;
@@ -206,7 +207,7 @@ final class JsonApiKernel
         $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int) $_GET['limit'] : 200;
         JsonResponse::send(200, [
             'ok' => true,
-            'requests' => RequestAuditLog::read($limit),
+            'requests' => AuditService::read($limit),
         ]);
     }
 
@@ -216,7 +217,7 @@ final class JsonApiKernel
     private function sendMutationResult(string $operation, array $result): void
     {
         $data = JsonResponse::withApiVersion($result['data']);
-        $requestId = RequestAuditLog::record($operation, $result);
+        $requestId = AuditService::record($operation, $result);
         if ($requestId !== null) {
             $data['request_id'] = $requestId;
         }

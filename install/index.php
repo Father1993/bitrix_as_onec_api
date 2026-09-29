@@ -51,6 +51,7 @@ class as_onec_api extends CModule
             Installer::migrateOptionsFromLegacyStockModule();
             $this->InstallDB();
             $this->InstallEvents();
+            $this->InstallFiles();
         } catch (\Throwable $e) {
             $this->rollbackInstall();
             $APPLICATION->ThrowException($e->getMessage());
@@ -105,6 +106,8 @@ class as_onec_api extends CModule
     {
         require_once dirname(__DIR__) . '/lib/Installer.php';
         Installer::grantAdminGroupsWriteAccess();
+        Installer::installAuditStorage();
+        \As\OnecApi\Audit\AuditAgent::register();
 
         return true;
     }
@@ -126,6 +129,8 @@ class as_onec_api extends CModule
 
     public function InstallFiles()
     {
+        Installer::installAdminFiles();
+
         return true;
     }
 
@@ -138,6 +143,7 @@ class as_onec_api extends CModule
     {
         require_once dirname(__DIR__) . '/lib/Installer.php';
         Installer::unregisterLegacyRestHandlers();
+        \As\OnecApi\Audit\AuditAgent::unregister();
 
         return true;
     }

@@ -2,6 +2,8 @@
 
 namespace As\OnecApi;
 
+use As\OnecApi\Audit\AuditAgent;
+use As\OnecApi\Audit\AuditRepository;
 use Bitrix\Main\Config\Option;
 use Bitrix\Main\EventManager;
 use Bitrix\Main\Loader;
@@ -86,6 +88,14 @@ final class Installer
         }
         self::unregisterLegacyRestHandlers();
         self::grantAdminGroupsWriteAccess();
+        try {
+            self::installAuditStorage();
+            AuditAgent::register();
+            self::installAdminFiles();
+        } catch (\Throwable $ignored) {
+            // Аудит не должен блокировать действующий обмен, если миграция временно недоступна.
+            Option::set(self::MODULE_ID, 'audit_storage_error', 'Y');
+        }
         Option::set(self::MODULE_ID, 'install_script_version', $ver);
     }
 
@@ -122,6 +132,28 @@ final class Installer
             if ($v !== '') {
                 Option::set(self::MODULE_ID, $key, $v);
             }
+        }
+    }
+
+    public static function installAuditStorage(): void
+    {
+        AuditRepository::installSchema();
+        if (Option::get(self::MODULE_ID, 'audit_legacy_file_imported', 'N') !== 'Y') {
+            $docRoot = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\');
+            if ($docRoot !== '') {
+                (new AuditRepository())->importLegacyJsonl($docRoot . '/upload/logs/as_1c_api_requests.jsonl');
+            }
+            Option::set(self::MODULE_ID, 'audit_legacy_file_imported', 'Y');
+        }
+        Option::delete(self::MODULE_ID, ['name' => 'audit_storage_error']);
+    }
+
+    public static function installAdminFiles(): void
+    {
+        $source = dirname(__DIR__) . '/install/admin/as_onec_api_audit.php';
+        $target = rtrim((string) ($_SERVER['DOCUMENT_ROOT'] ?? ''), '/\\') . '/bitrix/admin/as_onec_api_audit.php';
+        if (is_file($source) && $target !== '/bitrix/admin/as_onec_api_audit.php') {
+            @copy($source, $target);
         }
     }
 }

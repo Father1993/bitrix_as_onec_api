@@ -2,147 +2,37 @@
 
 namespace As\OnecApi\Http;
 
+use As\OnecApi\Audit\AuditService;
+
 /**
- * Короткий журнал POST-операций API.
+ * Санитизация диагностических данных POST-операций API.
  *
  * Не сохраняет ключи авторизации и полные тела запросов. Для диагностики сохраняются
- * безопасные метаданные, хэш тела, выбранные строки и результат обработки. Ротация
- * ограничена числом записей и размером файла.
+ * безопасные метаданные, хэш тела, выбранные строки и результат обработки.
  */
 final class RequestAuditLog
 {
-    private const DEFAULT_LIMIT = 200;
-    private const MAX_LIMIT = 200;
-    private const MAX_FILE_BYTES = 4194304;
-    private const MAX_ENTRY_BYTES = 131072;
     private const MAX_ERROR_DETAILS = 50;
     private const MAX_ITEM_DETAILS = 50;
     private const MAX_STRING_LENGTH = 512;
-    private const FILE_NAME = 'as_1c_api_requests.jsonl';
 
     /**
      * @param array{http_code?:int,data?:array<string,mixed>} $result
      */
     public static function record(string $operation, array $result): ?string
     {
-        $requestId = self::requestId();
-        $data = isset($result['data']) && is_array($result['data']) ? $result['data'] : [];
-
-        $entry = [
-            'request_id' => $requestId,
-            'at' => date('c'),
-            'operation' => $operation,
-            'client_ip' => self::clientIp(),
-            'http_code' => (int) ($result['http_code'] ?? 0),
-            'ok' => !empty($data['ok']),
-            'total' => self::intOrNull($data['total'] ?? null),
-            'updated' => self::intOrNull($data['updated'] ?? null),
-            'failed' => self::intOrNull($data['failed'] ?? null),
-            'no_change' => self::intOrNull($data['no_change'] ?? null),
-            'request' => self::requestDetails($operation, $data),
-            'response' => self::responseDetails($data),
-            'errors' => self::errorDetails($data['errors'] ?? []),
-        ];
-
-        $entry = self::fitEntry($entry);
-
-        return self::append($entry) ? $requestId : null;
+        return AuditService::record($operation, $result);
     }
 
     /**
      * @return list<array<string,mixed>>
      */
-    public static function read(int $limit = self::DEFAULT_LIMIT): array
+    public static function read(int $limit = 50): array
     {
-        $file = self::filePath();
-        if ($file === null || !is_file($file)) {
-            return [];
-        }
-
-        $handle = @fopen($file, 'rb');
-        if ($handle === false) {
-            return [];
-        }
-
-        try {
-            if (!@flock($handle, LOCK_SH)) {
-                return [];
-            }
-            $contents = stream_get_contents($handle);
-            @flock($handle, LOCK_UN);
-        } finally {
-            fclose($handle);
-        }
-
-        $records = self::decodeLines((string) $contents);
-        $limit = max(1, min(self::MAX_LIMIT, $limit));
-
-        return array_reverse(array_slice(array_reverse($records), 0, $limit));
+        return AuditService::read($limit);
     }
 
-    /**
-     * @param array<string,mixed> $entry
-     */
-    private static function append(array $entry): bool
-    {
-        $file = self::filePath();
-        if ($file === null) {
-            return false;
-        }
-
-        $handle = @fopen($file, 'c+');
-        if ($handle === false) {
-            return false;
-        }
-
-        try {
-            if (!@flock($handle, LOCK_EX)) {
-                return false;
-            }
-            rewind($handle);
-            $records = self::decodeLines((string) stream_get_contents($handle));
-            $records[] = $entry;
-            $records = array_slice($records, -self::limit());
-            $lines = self::linesWithinLimit($records);
-
-            rewind($handle);
-            if (!@ftruncate($handle, 0)) {
-                return false;
-            }
-            $written = fwrite($handle, implode("\n", $lines) . "\n");
-            fflush($handle);
-            @flock($handle, LOCK_UN);
-
-            return $written !== false;
-        } finally {
-            fclose($handle);
-        }
-    }
-
-    private static function filePath(): ?string
-    {
-        $docRoot = (string) ($_SERVER['DOCUMENT_ROOT'] ?? '');
-        if ($docRoot === '') {
-            return null;
-        }
-        $dir = rtrim($docRoot, '/\\') . '/upload/logs';
-        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
-            return null;
-        }
-
-        return $dir . '/' . self::FILE_NAME;
-    }
-
-    private static function limit(): int
-    {
-        if (defined('ONEC_API_REQUEST_LOG_LIMIT')) {
-            return max(1, min(self::MAX_LIMIT, (int) ONEC_API_REQUEST_LOG_LIMIT));
-        }
-
-        return self::DEFAULT_LIMIT;
-    }
-
-    private static function requestId(): string
+    public static function newRequestId(): string
     {
         try {
             return bin2hex(random_bytes(8));
@@ -151,7 +41,7 @@ final class RequestAuditLog
         }
     }
 
-    private static function clientIp(): string
+    public static function clientIp(): string
     {
         return substr(trim((string) ($_SERVER['REMOTE_ADDR'] ?? '')), 0, 45);
     }
@@ -159,7 +49,7 @@ final class RequestAuditLog
     /**
      * @param mixed $value
      */
-    private static function intOrNull($value): ?int
+    public static function intOrNull($value): ?int
     {
         return is_numeric($value) ? (int) $value : null;
     }
@@ -189,7 +79,7 @@ final class RequestAuditLog
      * @param array<string,mixed> $data
      * @return array<string,mixed>
      */
-    private static function requestDetails(string $operation, array $data): array
+    public static function safeDetails(string $operation, array $data): array
     {
         $details = [
             'method' => strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'POST')),
@@ -198,7 +88,7 @@ final class RequestAuditLog
         ];
         $raw = RequestBody::get();
         if ($raw === null) {
-            return $details;
+            return self::detailsEnvelope($details, $data);
         }
 
         $details['body_bytes'] = strlen($raw);
@@ -207,7 +97,7 @@ final class RequestAuditLog
         if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
             $details['json_valid'] = false;
 
-            return $details;
+            return self::detailsEnvelope($details, $data);
         }
 
         $items = self::extractItems($decoded);
@@ -215,13 +105,23 @@ final class RequestAuditLog
         if ($items === null) {
             $details['items_count'] = 0;
 
-            return $details;
+            return self::detailsEnvelope($details, $data);
         }
 
         $details['items_count'] = count($items);
         $details['items'] = self::itemDetails($operation, $items, $data['errors'] ?? []);
 
-        return $details;
+        return self::detailsEnvelope($details, $data);
+    }
+
+    /** @param array<string,mixed> $request @param array<string,mixed> $data @return array<string,mixed> */
+    private static function detailsEnvelope(array $request, array $data): array
+    {
+        return [
+            'request' => $request,
+            'response' => self::responseDetails($data),
+            'errors' => self::errorDetails($data['errors'] ?? []),
+        ];
     }
 
     /**
@@ -390,82 +290,4 @@ final class RequestAuditLog
         return true;
     }
 
-    /**
-     * @param array<string,mixed> $entry
-     * @return array<string,mixed>
-     */
-    private static function fitEntry(array $entry): array
-    {
-        $line = self::encode($entry);
-        if ($line !== null && strlen($line) <= self::MAX_ENTRY_BYTES) {
-            return $entry;
-        }
-
-        $entry['details_truncated'] = true;
-        if (isset($entry['request']['items']) && is_array($entry['request']['items'])) {
-            $entry['request']['items'] = array_slice($entry['request']['items'], 0, 5);
-        }
-        if (isset($entry['errors']) && is_array($entry['errors'])) {
-            $entry['errors'] = array_slice($entry['errors'], 0, 5);
-        }
-        if (isset($entry['response']['results']) && is_array($entry['response']['results'])) {
-            $entry['response']['results'] = array_slice($entry['response']['results'], 0, 5);
-        }
-
-        return $entry;
-    }
-
-    /**
-     * @param list<array<string,mixed>> $records
-     * @return list<string>
-     */
-    private static function linesWithinLimit(array $records): array
-    {
-        $lines = [];
-        $size = 0;
-        foreach (array_reverse($records) as $record) {
-            $line = self::encode($record);
-            if ($line === null || strlen($line) > self::MAX_ENTRY_BYTES) {
-                continue;
-            }
-            $lineSize = strlen($line) + 1;
-            if ($lines !== [] && $size + $lineSize > self::MAX_FILE_BYTES) {
-                break;
-            }
-            $lines[] = $line;
-            $size += $lineSize;
-        }
-
-        return array_reverse($lines);
-    }
-
-    /**
-     * @param array<string,mixed> $entry
-     */
-    private static function encode(array $entry): ?string
-    {
-        $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-
-        return $line === false ? null : $line;
-    }
-
-    /**
-     * @return list<array<string,mixed>>
-     */
-    private static function decodeLines(string $contents): array
-    {
-        if ($contents === '') {
-            return [];
-        }
-
-        $records = [];
-        foreach (preg_split('/\R/', trim($contents)) ?: [] as $line) {
-            $record = json_decode($line, true);
-            if (is_array($record)) {
-                $records[] = $record;
-            }
-        }
-
-        return $records;
-    }
 }
