@@ -89,13 +89,13 @@ final class AuditRepository implements AuditRepositoryInterface
                 'OPERATION' => (string) $entry['operation'],
                 'STATUS' => (string) $entry['status'],
                 'HTTP_CODE' => (int) $entry['http_code'],
-                'TOTAL' => $entry['total'],
-                'UPDATED' => $entry['updated'],
-                'FAILED' => $entry['failed'],
-                'NO_CHANGE' => $entry['no_change'],
+                'TOTAL' => (int) ($entry['total'] ?? 0),
+                'UPDATED' => (int) ($entry['updated'] ?? 0),
+                'FAILED' => (int) ($entry['failed'] ?? 0),
+                'NO_CHANGE' => (int) ($entry['no_change'] ?? 0),
                 'CLIENT_IP' => (string) $entry['client_ip'],
                 'BODY_SHA256' => (string) $entry['body_sha256'],
-                'BODY_BYTES' => $entry['body_bytes'],
+                'BODY_BYTES' => (int) ($entry['body_bytes'] ?? 0),
                 'DETAILS' => (string) $entry['details'],
             ]);
 
