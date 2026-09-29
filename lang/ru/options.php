@@ -2,6 +2,16 @@
 
 $MESS['AS_ONEC_API_OPTIONS_TAB'] = 'API обмена с 1С (остатки, лимиты)';
 $MESS['AS_ONEC_API_OPTIONS_TAB_TITLE'] = 'Лимиты и параметры HTTP-импорта';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_TAB'] = 'Журнал обмена';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_TAB_TITLE'] = 'Последние результаты запросов обмена с 1С';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_HINT'] =
+    'Показываются последние 200 POST-запросов: остатки, цены, склады и статусы заказов. Ключи API и тела запросов не сохраняются.';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_EMPTY'] = 'Записей пока нет. Журнал появится после первого POST-запроса 1С.';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_AT'] = 'Время';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_OPERATION'] = 'Операция';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_RESULT'] = 'Результат';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_COUNTS'] = 'Счётчики';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_DETAILS'] = 'Ошибки';
 $MESS['AS_ONEC_API_OPTIONS_HINT_EMPTY'] =
     'Пустые поля: используются константы ONEC_STOCK_IMPORT_* из local/php_interface/include/config.php (если заданы), иначе значения по умолчанию модуля.';
 $MESS['AS_ONEC_API_OPTIONS_MAX_ITEMS'] = 'Максимум позиций в одном запросе';

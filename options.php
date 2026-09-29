@@ -16,6 +16,7 @@ use Bitrix\Main\Config\Option;
 use Bitrix\Main\HttpApplication;
 use Bitrix\Main\Loader;
 use Bitrix\Main\Localization\Loc;
+use As\OnecApi\Http\RequestAuditLog;
 
 /** @global CMain $APPLICATION */
 
@@ -191,7 +192,31 @@ $aTabs = [
         'ICON' => '',
         'TITLE' => Loc::getMessage('AS_ONEC_API_OPTIONS_TAB_TITLE'),
     ],
+    [
+        'DIV' => 'as_onec_api_audit',
+        'TAB' => Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_TAB'),
+        'ICON' => '',
+        'TITLE' => Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_TAB_TITLE'),
+    ],
 ];
+
+$auditRows = RequestAuditLog::read(200);
+$formatAuditErrors = static function (array $errors): string {
+    $messages = [];
+    foreach ($errors as $error) {
+        if (!is_array($error)) {
+            continue;
+        }
+        $message = trim((string) ($error['message'] ?? ''));
+        if ($message === '') {
+            continue;
+        }
+        $product = trim((string) ($error['product_xml_id'] ?? $error['product_id'] ?? ''));
+        $messages[] = $product === '' ? $message : $product . ': ' . $message;
+    }
+
+    return implode("\n", $messages);
+};
 
 $tabControl = new CAdminTabControl('tabControl', $aTabs);
 ?>
@@ -234,6 +259,53 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
         </td>
     </tr>
     <?php } ?>
+    <?php
+    $tabControl->EndTab();
+    $tabControl->BeginNextTab();
+    ?>
+    <tr>
+        <td colspan="2">
+            <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_HINT')) ?>
+        </td>
+    </tr>
+    <tr>
+        <td colspan="2">
+            <?php if ($auditRows === []) { ?>
+                <?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_EMPTY')) ?>
+            <?php } else { ?>
+                <table class="adm-list-table" style="width: 100%;">
+                    <thead>
+                    <tr class="adm-list-table-header">
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_AT')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_OPERATION')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_RESULT')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_COUNTS')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_DETAILS')) ?></td>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($auditRows as $row) {
+                        $errors = isset($row['errors']) && is_array($row['errors']) ? $row['errors'] : [];
+                        $counts = array_filter([
+                            'total' => $row['total'] ?? null,
+                            'updated' => $row['updated'] ?? null,
+                            'failed' => $row['failed'] ?? null,
+                            'no_change' => $row['no_change'] ?? null,
+                        ], static fn ($value): bool => $value !== null);
+                        ?>
+                    <tr class="adm-list-table-row">
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['at'] ?? '')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['operation'] ?? '')) ?></td>
+                        <td class="adm-list-table-cell"><?= !empty($row['ok']) ? 'OK' : 'ERROR' ?> (HTTP <?= (int) ($row['http_code'] ?? 0) ?>)</td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(json_encode($counts, JSON_UNESCAPED_UNICODE) ?: '') ?></td>
+                        <td class="adm-list-table-cell" style="white-space: pre-line;"><?= htmlspecialcharsbx($formatAuditErrors($errors)) ?></td>
+                    </tr>
+                    <?php } ?>
+                    </tbody>
+                </table>
+            <?php } ?>
+        </td>
+    </tr>
     <?php
     $tabControl->EndTab();
     $tabControl->Buttons();
