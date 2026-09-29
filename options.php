@@ -277,6 +277,7 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
                     <thead>
                     <tr class="adm-list-table-header">
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_AT')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_REQUEST_ID')) ?></td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_OPERATION')) ?></td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_RESULT')) ?></td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_COUNTS')) ?></td>
@@ -295,6 +296,7 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
                         ?>
                     <tr class="adm-list-table-row">
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['at'] ?? '')) ?></td>
+                        <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['request_id'] ?? '')) ?></td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['operation'] ?? '')) ?></td>
                         <td class="adm-list-table-cell"><?= !empty($row['ok']) ? 'OK' : 'ERROR' ?> (HTTP <?= (int) ($row['http_code'] ?? 0) ?>)</td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(json_encode($counts, JSON_UNESCAPED_UNICODE) ?: '') ?></td>
