@@ -48,7 +48,7 @@ final class AuditRepository implements AuditRepositoryInterface
             $timestamp = strtotime((string) ($legacy['at'] ?? ''));
             $createdAt = $timestamp === false
                 ? new DateTime()
-                : new DateTime(date('Y-m-d H:i:s', $timestamp));
+                : new DateTime(date('d.m.Y H:i:s', $timestamp));
             $request = isset($legacy['request']) && is_array($legacy['request']) ? $legacy['request'] : [];
             $failed = self::nullableInt($legacy['failed'] ?? null);
             $ok = !empty($legacy['ok']);
