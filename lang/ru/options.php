@@ -12,7 +12,8 @@ $MESS['AS_ONEC_API_OPTIONS_AUDIT_REQUEST_ID'] = 'ID запроса';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_OPERATION'] = 'Операция';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_RESULT'] = 'Результат';
 $MESS['AS_ONEC_API_OPTIONS_AUDIT_COUNTS'] = 'Счётчики';
-$MESS['AS_ONEC_API_OPTIONS_AUDIT_DETAILS'] = 'Ошибки';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_DETAILS'] = 'Детали';
+$MESS['AS_ONEC_API_OPTIONS_AUDIT_SHOW_DETAILS'] = 'Раскрыть детали (ошибок: #COUNT#)';
 $MESS['AS_ONEC_API_OPTIONS_HINT_EMPTY'] =
     'Пустые поля: используются константы ONEC_STOCK_IMPORT_* из local/php_interface/include/config.php (если заданы), иначе значения по умолчанию модуля.';
 $MESS['AS_ONEC_API_OPTIONS_MAX_ITEMS'] = 'Максимум позиций в одном запросе';

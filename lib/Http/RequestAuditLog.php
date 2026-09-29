@@ -5,13 +5,19 @@ namespace As\OnecApi\Http;
 /**
  * Короткий журнал POST-операций API.
  *
- * Не сохраняет ключи авторизации и тела запросов. Файл содержит только последние N итогов
- * выполнения, поэтому подходит для оперативной проверки обмена без бесконечного роста логов.
+ * Не сохраняет ключи авторизации и полные тела запросов. Для диагностики сохраняются
+ * безопасные метаданные, хэш тела, выбранные строки и результат обработки. Ротация
+ * ограничена числом записей и размером файла.
  */
 final class RequestAuditLog
 {
     private const DEFAULT_LIMIT = 200;
     private const MAX_LIMIT = 200;
+    private const MAX_FILE_BYTES = 4194304;
+    private const MAX_ENTRY_BYTES = 131072;
+    private const MAX_ERROR_DETAILS = 50;
+    private const MAX_ITEM_DETAILS = 50;
+    private const MAX_STRING_LENGTH = 512;
     private const FILE_NAME = 'as_1c_api_requests.jsonl';
 
     /**
@@ -33,8 +39,12 @@ final class RequestAuditLog
             'updated' => self::intOrNull($data['updated'] ?? null),
             'failed' => self::intOrNull($data['failed'] ?? null),
             'no_change' => self::intOrNull($data['no_change'] ?? null),
-            'errors' => self::errorSample($data['errors'] ?? []),
+            'request' => self::requestDetails($operation, $data),
+            'response' => self::responseDetails($data),
+            'errors' => self::errorDetails($data['errors'] ?? []),
         ];
+
+        $entry = self::fitEntry($entry);
 
         return self::append($entry) ? $requestId : null;
     }
@@ -93,14 +103,7 @@ final class RequestAuditLog
             $records = self::decodeLines((string) stream_get_contents($handle));
             $records[] = $entry;
             $records = array_slice($records, -self::limit());
-
-            $lines = [];
-            foreach ($records as $record) {
-                $line = json_encode($record, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-                if ($line !== false) {
-                    $lines[] = $line;
-                }
-            }
+            $lines = self::linesWithinLimit($records);
 
             rewind($handle);
             if (!@ftruncate($handle, 0)) {
@@ -165,28 +168,285 @@ final class RequestAuditLog
      * @param mixed $errors
      * @return list<array<string,mixed>>
      */
-    private static function errorSample($errors): array
+    private static function errorDetails($errors): array
     {
         if (!is_array($errors)) {
             return [];
         }
 
-        $sample = [];
-        foreach (array_slice($errors, 0, 5) as $error) {
+        $details = [];
+        foreach (array_slice($errors, 0, self::MAX_ERROR_DETAILS) as $error) {
             if (!is_array($error)) {
                 continue;
             }
-            $sample[] = array_filter([
-                'index' => $error['index'] ?? null,
-                'product_xml_id' => $error['product_xml_id'] ?? null,
-                'product_id' => $error['product_id'] ?? null,
-                'store_id' => $error['store_id'] ?? null,
-                'order_xml_id' => $error['order_xml_id'] ?? null,
-                'message' => isset($error['message']) ? (string) $error['message'] : null,
-            ], static fn ($value): bool => $value !== null && $value !== '');
+            $details[] = self::sanitizeArray($error);
         }
 
-        return $sample;
+        return $details;
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
+    private static function requestDetails(string $operation, array $data): array
+    {
+        $details = [
+            'method' => strtoupper((string) ($_SERVER['REQUEST_METHOD'] ?? 'POST')),
+            'path' => self::requestPath(),
+            'content_type' => self::shortString((string) ($_SERVER['CONTENT_TYPE'] ?? '')),
+        ];
+        $raw = RequestBody::get();
+        if ($raw === null) {
+            return $details;
+        }
+
+        $details['body_bytes'] = strlen($raw);
+        $details['body_sha256'] = hash('sha256', $raw);
+        $decoded = json_decode($raw, true);
+        if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+            $details['json_valid'] = false;
+
+            return $details;
+        }
+
+        $items = self::extractItems($decoded);
+        $details['json_valid'] = true;
+        if ($items === null) {
+            $details['items_count'] = 0;
+
+            return $details;
+        }
+
+        $details['items_count'] = count($items);
+        $details['items'] = self::itemDetails($operation, $items, $data['errors'] ?? []);
+
+        return $details;
+    }
+
+    /**
+     * @param array<string,mixed> $data
+     * @return array<string,mixed>
+     */
+    private static function responseDetails(array $data): array
+    {
+        $keys = ['error', 'message', 'max_items', 'batch_index', 'errors_truncated'];
+        $details = [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $data)) {
+                $details[$key] = self::sanitizeValue($data[$key]);
+            }
+        }
+        if (isset($data['results']) && is_array($data['results'])) {
+            $details['results'] = array_map(
+                static fn ($result): array => is_array($result) ? self::sanitizeArray($result) : [],
+                array_slice($data['results'], 0, self::MAX_ERROR_DETAILS)
+            );
+        }
+
+        return $details;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return list<array<string,mixed>>|null
+     */
+    private static function extractItems(array $payload): ?array
+    {
+        if (isset($payload['items']) && is_array($payload['items'])) {
+            return $payload['items'];
+        }
+
+        return self::isList($payload) ? $payload : null;
+    }
+
+    /**
+     * @param list<mixed> $items
+     * @param mixed $errors
+     * @return list<array{index:int,item:array<string,mixed>|string}>
+     */
+    private static function itemDetails(string $operation, array $items, $errors): array
+    {
+        $indexes = range(0, min(9, max(0, count($items) - 1)));
+        if (is_array($errors)) {
+            foreach ($errors as $error) {
+                if (is_array($error) && isset($error['index']) && is_numeric($error['index'])) {
+                    $indexes[] = (int) $error['index'];
+                }
+            }
+        }
+        $indexes = array_values(array_unique(array_filter(
+            $indexes,
+            static fn (int $index): bool => $index >= 0 && $index < count($items)
+        )));
+        $indexes = array_slice($indexes, 0, self::MAX_ITEM_DETAILS);
+
+        $details = [];
+        foreach ($indexes as $index) {
+            $row = $items[$index];
+            $details[] = [
+                'index' => $index,
+                'item' => is_array($row) ? self::sanitizeItem($operation, $row) : self::shortString((string) $row),
+            ];
+        }
+
+        return $details;
+    }
+
+    /**
+     * @param array<string,mixed> $item
+     * @return array<string,mixed>
+     */
+    private static function sanitizeItem(string $operation, array $item): array
+    {
+        $allowed = [
+            'product_xml_id', 'xml_id', 'XML_ID', 'product_id',
+            'store_xml_id', 'store_id', 'store_code', 'code',
+            'amount', 'quantity', 'catalog_group_id', 'price_type_id', 'CATALOG_GROUP_ID', 'price', 'currency',
+            'title', 'name', 'address', 'site_id', 'active',
+            'order_xml_id', 'order_id', 'id', 'status_code_1c', 'status_code', 'status', 'event_code',
+            'paid', 'allow_delivery', 'deducted', 'event_at', 'event_date', 'date',
+        ];
+        $safe = [];
+        foreach ($allowed as $key) {
+            if (array_key_exists($key, $item)) {
+                $safe[$key] = self::sanitizeValue($item[$key]);
+            }
+        }
+        if ($safe === []) {
+            $safe['schema'] = 'Поля позиции не входят в безопасный диагностический набор для ' . $operation . '.';
+        }
+
+        return $safe;
+    }
+
+    /**
+     * @param array<string,mixed> $value
+     * @return array<string,mixed>
+     */
+    private static function sanitizeArray(array $value): array
+    {
+        $safe = [];
+        foreach ($value as $key => $item) {
+            $key = (string) $key;
+            if (preg_match('/(?:access[_-]?key|api[_-]?key|password|token|authorization|secret)/i', $key)) {
+                $safe[$key] = '[redacted]';
+                continue;
+            }
+            $safe[$key] = self::sanitizeValue($item);
+        }
+
+        return $safe;
+    }
+
+    /**
+     * @param mixed $value
+     * @return mixed
+     */
+    private static function sanitizeValue($value)
+    {
+        if (is_string($value)) {
+            return self::shortString($value);
+        }
+        if (is_scalar($value) || $value === null) {
+            return $value;
+        }
+        if (is_array($value)) {
+            return self::sanitizeArray($value);
+        }
+
+        return gettype($value);
+    }
+
+    private static function shortString(string $value): string
+    {
+        if (function_exists('mb_substr')) {
+            return mb_substr($value, 0, self::MAX_STRING_LENGTH);
+        }
+
+        return substr($value, 0, self::MAX_STRING_LENGTH);
+    }
+
+    private static function requestPath(): string
+    {
+        $uri = (string) ($_SERVER['REQUEST_URI'] ?? '');
+        $path = parse_url($uri, PHP_URL_PATH);
+
+        return is_string($path) ? self::shortString($path) : '';
+    }
+
+    /**
+     * @param array<mixed> $value
+     */
+    private static function isList(array $value): bool
+    {
+        $expected = 0;
+        foreach ($value as $key => $_) {
+            if ($key !== $expected++) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string,mixed> $entry
+     * @return array<string,mixed>
+     */
+    private static function fitEntry(array $entry): array
+    {
+        $line = self::encode($entry);
+        if ($line !== null && strlen($line) <= self::MAX_ENTRY_BYTES) {
+            return $entry;
+        }
+
+        $entry['details_truncated'] = true;
+        if (isset($entry['request']['items']) && is_array($entry['request']['items'])) {
+            $entry['request']['items'] = array_slice($entry['request']['items'], 0, 5);
+        }
+        if (isset($entry['errors']) && is_array($entry['errors'])) {
+            $entry['errors'] = array_slice($entry['errors'], 0, 5);
+        }
+        if (isset($entry['response']['results']) && is_array($entry['response']['results'])) {
+            $entry['response']['results'] = array_slice($entry['response']['results'], 0, 5);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $records
+     * @return list<string>
+     */
+    private static function linesWithinLimit(array $records): array
+    {
+        $lines = [];
+        $size = 0;
+        foreach (array_reverse($records) as $record) {
+            $line = self::encode($record);
+            if ($line === null || strlen($line) > self::MAX_ENTRY_BYTES) {
+                continue;
+            }
+            $lineSize = strlen($line) + 1;
+            if ($lines !== [] && $size + $lineSize > self::MAX_FILE_BYTES) {
+                break;
+            }
+            $lines[] = $line;
+            $size += $lineSize;
+        }
+
+        return array_reverse($lines);
+    }
+
+    /**
+     * @param array<string,mixed> $entry
+     */
+    private static function encode(array $entry): ?string
+    {
+        $line = json_encode($entry, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        return $line === false ? null : $line;
     }
 
     /**
