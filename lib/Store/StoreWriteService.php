@@ -3,6 +3,7 @@
 namespace As\OnecApi\Store;
 
 use As\OnecApi\Http\JsonResponse;
+use As\OnecApi\Http\RequestBody;
 use As\OnecApi\Stock\StockEngineBootstrap;
 use As\OnecApi\StockImportOptions;
 use Bitrix\Catalog\StoreTable;
@@ -39,7 +40,7 @@ final class StoreWriteService
         $maxItems = StockImportOptions::getMaxItems();
         $batchSize = StockImportOptions::getBatchSize();
 
-        $raw = file_get_contents('php://input');
+        $raw = RequestBody::get();
         if ($raw === false) {
             return [
                 'http_code' => 400,

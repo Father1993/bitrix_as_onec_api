@@ -3,6 +3,7 @@
 namespace As\OnecApi\Stock;
 
 use As\OnecApi\Http\JsonResponse;
+use As\OnecApi\Http\RequestBody;
 use As\OnecApi\StockImportOptions;
 use Bitrix\Catalog\Config\State;
 use Bitrix\Main\Application;
@@ -44,7 +45,7 @@ final class ImportService
                 return JsonResponse::payloadTooLarge($maxBodyBytes);
             }
         } else {
-            $raw = file_get_contents('php://input');
+            $raw = RequestBody::get();
             if ($raw === false) {
                 return [
                     'http_code' => 400,

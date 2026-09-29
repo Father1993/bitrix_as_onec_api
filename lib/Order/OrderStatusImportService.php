@@ -3,6 +3,7 @@
 namespace As\OnecApi\Order;
 
 use As\OnecApi\Http\JsonResponse;
+use As\OnecApi\Http\RequestBody;
 use As\OnecApi\Stock\StockEngineBootstrap;
 use As\OnecApi\StockImportOptions;
 use Bitrix\Main\Loader;
@@ -32,7 +33,7 @@ final class OrderStatusImportService
         $maxBodyBytes = StockImportOptions::getMaxBodyBytes();
         $maxItems = StockImportOptions::getMaxItems();
 
-        $raw = file_get_contents('php://input');
+        $raw = RequestBody::get();
         if ($raw === false) {
             return [
                 'http_code' => 400,

@@ -201,22 +201,6 @@ $aTabs = [
 ];
 
 $auditRows = RequestAuditLog::read(200);
-$formatAuditErrors = static function (array $errors): string {
-    $messages = [];
-    foreach ($errors as $error) {
-        if (!is_array($error)) {
-            continue;
-        }
-        $message = trim((string) ($error['message'] ?? ''));
-        if ($message === '') {
-            continue;
-        }
-        $product = trim((string) ($error['product_xml_id'] ?? $error['product_id'] ?? ''));
-        $messages[] = $product === '' ? $message : $product . ': ' . $message;
-    }
-
-    return implode("\n", $messages);
-};
 
 $tabControl = new CAdminTabControl('tabControl', $aTabs);
 ?>
@@ -293,6 +277,18 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
                             'failed' => $row['failed'] ?? null,
                             'no_change' => $row['no_change'] ?? null,
                         ], static fn ($value): bool => $value !== null);
+                        $detailPayload = array_filter([
+                            'request_id' => $row['request_id'] ?? null,
+                            'client_ip' => $row['client_ip'] ?? null,
+                            'request' => $row['request'] ?? null,
+                            'response' => $row['response'] ?? null,
+                            'errors' => $errors,
+                            'details_truncated' => $row['details_truncated'] ?? null,
+                        ], static fn ($value): bool => $value !== null && $value !== []);
+                        $detailJson = json_encode(
+                            $detailPayload,
+                            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
+                        ) ?: '';
                         ?>
                     <tr class="adm-list-table-row">
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['at'] ?? '')) ?></td>
@@ -300,7 +296,12 @@ $tabControl = new CAdminTabControl('tabControl', $aTabs);
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx((string) ($row['operation'] ?? '')) ?></td>
                         <td class="adm-list-table-cell"><?= !empty($row['ok']) ? 'OK' : 'ERROR' ?> (HTTP <?= (int) ($row['http_code'] ?? 0) ?>)</td>
                         <td class="adm-list-table-cell"><?= htmlspecialcharsbx(json_encode($counts, JSON_UNESCAPED_UNICODE) ?: '') ?></td>
-                        <td class="adm-list-table-cell" style="white-space: pre-line;"><?= htmlspecialcharsbx($formatAuditErrors($errors)) ?></td>
+                        <td class="adm-list-table-cell">
+                            <details>
+                                <summary><?= htmlspecialcharsbx(Loc::getMessage('AS_ONEC_API_OPTIONS_AUDIT_SHOW_DETAILS', ['#COUNT#' => count($errors)])) ?></summary>
+                                <pre style="max-width: 680px; max-height: 360px; overflow: auto; white-space: pre-wrap;"><?= htmlspecialcharsbx($detailJson) ?></pre>
+                            </details>
+                        </td>
                     </tr>
                     <?php } ?>
                     </tbody>
